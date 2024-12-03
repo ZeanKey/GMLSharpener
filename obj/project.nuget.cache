@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "dgSpecHash": "yJV5vnYxYDu7maK2/LiiSkUhFfg3J6SPe77rx3jpRI3PJBlpVGwHaF1t1elQ+8p1EmwPYT0xDjXc0HI1L7mg2Q==",
+  "success": true,
+  "projectFilePath": "/Users/zean/Projects/UNDERTALE-Maker/GMLSharpener/GMLSharpener.csproj",
+  "expectedPackageFiles": [
+    "/Users/zean/.nuget/packages/raylib-cs/6.1.1/raylib-cs.6.1.1.nupkg.sha512",
+    "/Users/zean/.nuget/packages/system.numerics.vectors/4.5.0/system.numerics.vectors.4.5.0.nupkg.sha512"
+  ],
+  "logs": []
+}
