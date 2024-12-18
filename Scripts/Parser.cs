@@ -8,336 +8,9 @@ using System.Reflection;
 using System.Diagnostics.CodeAnalysis;
 using System.Dynamic;
 using System.Collections;
+using GMLSharpener.GM;
 
 namespace GMLSharpener;
-
-/// <summary>
-/// GameMaker Value type, it stores a C# value having the similiar effect as <c>object</c>.
-/// </summary>
-public struct GMValue
-{
-    /// <summary>
-    /// 
-    /// </summary>
-    public static readonly float MathEpsilon = 0.00001f;
-
-    /// <summary>
-    /// The value inside the GameMaker Value.
-    /// </summary>
-    /// <remarks>
-    /// Don't put the GameMaker Value inside the GameMaker Value.
-    /// </remarks>
-    public object? Value;
-    
-    /// <summary>
-    /// Access the internal int indexed collection (usually the <c>List</c>) when box stores GameMaker Array type.
-    /// </summary>
-    /// <remarks>
-    /// When accessing setter indexer to a non-indexed collection type, it will <b>automatically</b> trans the value inside the box into GameMaker Array, where will cause the change of variable value. This is very unsafe and the potential risk of changing struct is not very clear for me, make sure you know what you're doing.
-    /// </remarks>
-    /// <param name="index">The index of the element accessing.</param>
-    /// <returns></returns>
-    /// <exception cref="Exception"></exception>
-    public GMValue this[params int[] index]
-    {
-        readonly get
-        {
-            if (!TryGetIndexes(index, out GMValue? result)) throw new Exception();
-            return result ?? throw new Exception();
-        }
-        set
-        { 
-            if (!TrySetIndexes(index, value)) throw new Exception();
-        }
-    }
-    
-    /// <summary>
-    /// Accessor for accessing GameMaker Array type with GameMaker Real type.
-    /// The index will be rounded by force cast.
-    /// </summary>
-    /// <param name="index">The index of the element accessing.</param>
-    /// <returns></returns>
-    public GMValue this[params float[] index]
-    {
-        readonly get => this[index.Select(x => (int)x).ToArray()];
-        set => this[index.Select(x => (int)x).ToArray()] = value;
-    }
-    
-    /// <summary>
-    /// 
-    /// </summary>
-    /// <param name="name"></param>
-    /// <returns></returns>
-    public readonly GMValue this[string name]
-    {
-        get => GetMember(name);
-        set => SetMember(name, value);
-    }
-
-    public GMValue()
-    {
-
-    }
-
-    public GMValue(object? value)
-    {
-        Value = value;
-    }
-
-    public static bool Equality(object? left, object? right)
-    {
-        if (left is not null && right is not null)
-        {
-            if (left is string strL && right is string strR)
-                return strL == strR;
-            if (Convert.ChangeType(left, typeof(float)) is float numL && Convert.ChangeType(right, typeof(float)) is float numR)
-                return Math.Abs(numL - numR) < MathEpsilon;
-            return false;
-        }
-        return left is null && right is null;
-    }
-    
-#region MemberAccessor
-    private readonly bool TryGetMember(string name, out GMValue result)
-    {
-        if (Value is IDictionary<string, object?> structure)
-        {
-#if FEATURE_UNDEFINED_STRUCT_MEMBER_ACCESSIBLE
-            structure.TryGetValue(name, out var value);
-            result = new(value);
-            return true;
-#else
-            if (structure.TryGetValue(name, out var value))
-            {       
-                result = value;
-                return true;
-            }
-#endif
-        }
-        if (Value is Instance instance)
-        {
-            if (Instance.ReservedInstanceFields.TryGetValue(name, out var member))
-            {
-                if (member is PropertyInfo propertyInfo)
-                {
-                    result = new(propertyInfo.GetValue(Value));
-                    return true;
-                }
-                if (member is FieldInfo fieldInfo)
-                {
-                    result = new(fieldInfo.GetValue(Value));
-                    return true;
-                }
-            }
-            if (instance.Self is Dictionary<string, object?> self && self.TryGetValue(name, out var value))
-            {
-                result = new(value);
-                return true;
-            }
-        }
-        result = new(null);
-        return false;
-    }
-
-    private readonly bool TrySetMember(string name, GMValue val)
-    {
-        if (Value is IDictionary<string, object?> gmStruct)
-        {
-            gmStruct[name] = val.Value;
-            return true;
-        }
-        if (Value is Instance instance)
-        {
-            if (Instance.ReservedInstanceFields.TryGetValue(name, out var field))
-            {
-                if (field is PropertyInfo propertyInfo)
-                {
-                    propertyInfo.SetValue(Value, val.Value);
-                    return true;
-                }
-                if (field is FieldInfo fieldInfo)
-                {
-                    fieldInfo.SetValue(Value, val.Value);
-                    return true;
-                }
-            }
-            if (instance.Self is Dictionary<string, object?> self)
-            {
-                self[name] = val.Value;
-                return true;
-            }
-        }
-        return false;
-    }
-
-    public readonly GMValue GetMember(string name)
-    {
-        if (TryGetMember(name, out GMValue value))
-        {
-            return value;
-        }
-        throw new MissingMemberException($"The member named \"{name}\" is not set before reading it.");
-    }
-
-    public readonly void SetMember(string name, GMValue val) 
-    {
-        if (!TrySetMember(name, val))
-        {
-            throw new Exception();
-        }
-    }
-#endregion
-
-#region Indexer
-    public readonly bool TryGetIndexes(int[] indexes, out GMValue? result)
-    {
-        result = null;
-        if (Value is List<object?> list)
-        {
-            List<object?> element = list;
-            for (var i = 0; i < indexes.Length - 1; i++)
-            {
-                var index = indexes[i];
-                element = (List<object?>?)element[index] ?? throw new Exception();
-            }
-            result = new GMValue(element[indexes.Last()]);
-            return true;
-        }
-        return false;
-    }
-
-    public bool TrySetIndexes(int[] indexes, GMValue val)
-    {
-        if (indexes.Length == 0) throw new Exception();
-        if (Value is not List<object?>)
-        {
-            Value = new List<object?>();
-        }
-        List<object?> element = (List<object?>)Value;
-        for (var i = 0; i < indexes.Length; i++)
-        {
-            var index = indexes[i];
-            for (;index >= element.Count;)
-            {
-                element.Add(null);
-            }
-            if (element[index] is not List<object?>)
-            {
-                element[index] = new List<object?>();
-            }
-            if (i != indexes.Length - 1)
-            {
-                element = (List<object?>)element[index]!;
-            }
-            else
-            {
-                element[index] = val.Value;
-            }
-        }
-        return true;
-    }
-#endregion
-
-#region Operators
-    public override readonly bool Equals(object? obj)
-    {
-        if (obj is null)
-        {
-            return false;
-        }
-        if (obj is GMValue value)
-        {
-            return Equality(value.Value, Value);
-        }
-        return obj == Value;
-    }
-
-    public static bool operator ==(GMValue left, GMValue right)
-    {
-        return left.Equals(right);
-    }
-
-    public static bool operator !=(GMValue left, GMValue right)
-    {
-        return !(left == right);
-    }
-
-    public static bool operator <(GMValue left, GMValue right)
-    {
-        return (((float?)left.Value) ?? throw new Exception()) < (((float?)right.Value) ?? throw new Exception());
-    }
-
-    public static bool operator >(GMValue left, GMValue right)
-    {
-        return (((float?)left.Value) ?? throw new Exception()) > (((float?)right.Value) ?? throw new Exception());
-    }
-
-    public static bool operator <=(GMValue left, GMValue right)
-    {
-        return (((float?)left.Value) ?? throw new Exception()) <= (((float?)right.Value) ?? throw new Exception());
-    }
-
-    public static bool operator >=(GMValue left, GMValue right)
-    {
-        return (((float?)left.Value) ?? throw new Exception()) >= (((float?)right.Value) ?? throw new Exception());
-    }
-
-    public static GMValue operator + (GMValue value)
-    {
-        return new(value.Value);
-    }
-
-    public static GMValue operator - (GMValue value)
-    {
-        return new(-(float?)value.Value ?? throw new Exception());
-    }
-
-    public static GMValue operator +(GMValue left, GMValue right)
-    {
-        if (left.Value is string str)
-        {
-            return new(str + right.Value?.ToString() ?? throw new Exception());
-        }
-        return new((float?)left.Value + (float?)right.Value);
-    }
-
-    public static GMValue operator -(GMValue left, GMValue right)
-    {
-        return new((float?)left.Value - (float?)right.Value);
-    }
-
-    public static GMValue operator %(GMValue left, GMValue right)
-    {
-        return new((float?)left.Value % (float?)right.Value);
-    }
-
-    public static GMValue operator *(GMValue left, GMValue right)
-    {
-        if (left.Value is string str)
-        {
-            return new(string.Concat(Enumerable.Repeat(str, (int?)(float?)right.Value ?? throw new Exception())));
-        }
-        return new((float?)left.Value * (float?)right.Value);
-    }
-
-    public static GMValue operator /(GMValue left, GMValue right)
-    {
-        return new((float?)left.Value / (float?)right.Value);
-    }
-#endregion
-
-    public override readonly string ToString()
-    {
-        // This prefix won't shown if you use show_debug_message to dump,
-        // since that will capture the Value field only.
-        return "GMValue: " + Value?.ToString() ?? "Null";
-    }
-
-    public override readonly int GetHashCode()
-    {
-        return Value?.GetHashCode() ?? throw new Exception();
-    }
-}
 
 /*
 /// <summary>
@@ -420,7 +93,7 @@ public partial class ExpressionParser;
 // Tools & Reflections
 public partial class ExpressionParser
 {
-    internal static readonly MethodInfo Print = typeof(GM).GetMethod("show_debug_message") ?? throw new Exception("Debugger doesn't exists"); // Debugger, can be inserted into the Expression to print certain value.
+    internal static readonly MethodInfo Print = typeof(GML).GetMethod("show_debug_message") ?? throw new Exception("Debugger doesn't exists"); // Debugger, can be inserted into the Expression to print certain value.
 
     /// <summary>
     /// Invoke C# Method of GameMaker Callable with value boxed in GameMaker Value struct.
@@ -431,7 +104,7 @@ public partial class ExpressionParser
     /// <param name="arguments">    The argument array of GameMaker boxed value</param>
     /// <returns>The return value of target method, null if no return value exists</returns>
     /// <exception cref="Exception">The type of the callable is nether MethodInfo or Method</exception>
-    public static GMValue InvokeWithGMValue(object caller, object callable, params GMValue[] arguments)
+    public static RValue InvokeWithGMValue(object caller, object callable, params RValue[] arguments)
     {
         MethodInfo method;
         object? self;
@@ -480,9 +153,9 @@ public partial class ExpressionParser
         }
         if (args.Count == 0)
         {
-            return new GMValue(method.Invoke(self, [null]));
+            return new RValue(method.Invoke(self, [null]));
         }
-        else return new GMValue(method.Invoke(self, [.. args]));
+        else return new RValue(method.Invoke(self, [.. args]));
     }
 
 #region Expression Tree Reflections
@@ -492,13 +165,13 @@ public partial class ExpressionParser
     private static readonly MethodInfo GMScriptGetter = typeof(ExpressionParser).GetMethod("ResolveScriptHandle") ?? throw new Exception("Script Getter doesn't exists");
 
     // Ctors
-    private static readonly ConstructorInfo GMValueConstructor = typeof(GMValue).GetConstructor([typeof(object)]) ?? throw new Exception();
+    private static readonly ConstructorInfo GMValueConstructor = typeof(RValue).GetConstructor([typeof(object)]) ?? throw new Exception();
     private static readonly ConstructorInfo GMMethodConstructor = typeof(Method).GetConstructor([typeof(object), typeof(Script)]) ?? throw new Exception();
     private static readonly ConstructorInfo GMStructConstructor = typeof(ExpandoObject).GetConstructor(Type.EmptyTypes) ?? throw new Exception("");
 
     /// Accessors
-    private static readonly PropertyInfo GMValueIndexer = typeof(GMValue).GetProperties().First(x => x.GetIndexParameters().Select(y => y.ParameterType).SequenceEqual([typeof(float[])])) ?? throw new Exception("RValue missing indexer.");
-    private static readonly PropertyInfo GMValueMemberAccessor = typeof(GMValue).GetProperties().First(x => x.GetIndexParameters().Select(y => y.ParameterType).SequenceEqual([typeof(string)])) ?? throw new Exception("RValue missing member accessor.");
+    private static readonly PropertyInfo GMValueIndexer = typeof(RValue).GetProperties().First(x => x.GetIndexParameters().Select(y => y.ParameterType).SequenceEqual([typeof(float[])])) ?? throw new Exception("RValue missing indexer.");
+    private static readonly PropertyInfo GMValueMemberAccessor = typeof(RValue).GetProperties().First(x => x.GetIndexParameters().Select(y => y.ParameterType).SequenceEqual([typeof(string)])) ?? throw new Exception("RValue missing member accessor.");
 #endregion
 
 #region Expression Tree Nodes
@@ -533,7 +206,7 @@ public partial class ExpressionParser
     {
         Expression self = Expression.Field(caller, "Value");
         Expression function = Expression.Field(method, "Value");
-        return Expression.Call(null, GMInvoker, [Expression.Convert(self, typeof(object)), Expression.Convert(function, typeof(object)), Expression.NewArrayInit(typeof(GMValue), arguments)]);
+        return Expression.Call(null, GMInvoker, [Expression.Convert(self, typeof(object)), Expression.Convert(function, typeof(object)), Expression.NewArrayInit(typeof(RValue), arguments)]);
     }
 
     /// <summary>
@@ -570,7 +243,7 @@ public partial class ExpressionParser
     /// <returns></returns>
     private static Expression ToGMValue(Expression original)
     {
-        if (original.Type == typeof(GMValue))
+        if (original.Type == typeof(RValue))
         {
             return original;
         }
@@ -587,7 +260,7 @@ public partial class ExpressionParser
     /// <exception cref="Exception">Script doesn't exists</exception>
     public static Script ResolveScriptHandle(Handle<Script> handle)
     {
-        if (!GM.FunctionManager.TryFindAsset(handle, out var asset)) throw new Exception();
+        if (!GML.FunctionManager.TryFindAsset(handle, out var asset)) throw new Exception();
         return asset!;
     }
 
@@ -629,11 +302,11 @@ public partial class ExpressionParser
                 return val;
             }
         }
-        if (typeof(GM).GetMethod(name) is MethodInfo runtimeFunction)
+        if (typeof(GML).GetMethod(name) is MethodInfo runtimeFunction)
         {
-            return Expression.Constant(new GMValue() { Value = runtimeFunction });
+            return Expression.Constant(new RValue() { Value = runtimeFunction });
         }
-        if (GM.FunctionManager.TryFindAssetHandle(name, out var handle) && GM.FunctionManager.TryFindAsset(handle, out var script))
+        if (GML.FunctionManager.TryFindAssetHandle(name, out var handle) && GML.FunctionManager.TryFindAsset(handle, out var script))
         {
             return Expression.New
             (
@@ -728,13 +401,13 @@ public partial class ExpressionParser
         
         // Lexer trans the raw code into token stack
         Lexer lexer = new(code);
-        Token token;
+        Token? token;
         do
         {
             token = lexer.Scan();
-            TokenStack.Push(token);
+            if (token is not null) TokenStack.Push(token);
         }
-        while (token != Tokens.Eof);
+        while (token is null || token.Type != TokenType.Eof);
         TokenStack = new(TokenStack);
     }
 
@@ -756,7 +429,7 @@ public partial class ExpressionParser
 
         // Catch script body
         List<Expression> body = [];
-        while (TokenStack.Peek().Type != TokenKind.Eof)
+        while (TokenStack.Peek().Type != TokenType.Eof)
         {
             body.Add(GetStatementLine());
         }
@@ -781,7 +454,7 @@ public partial class ExpressionParser
         
         // Catch script body
         List<Expression> body = [];
-        while (TokenStack.Peek().Type != TokenKind.Eof)
+        while (TokenStack.Peek().Type != TokenType.Eof)
         {
             body.Add(GetStatementLine());
         }
@@ -814,7 +487,7 @@ public partial class ExpressionParser
         foreach (var header in headers)
         {
             var script = new Script(static (_, _) => {}, header);
-            GM.FunctionManager.Register(script);
+            GML.FunctionManager.Register(script);
         } 
     }
 
@@ -832,7 +505,7 @@ public partial class ExpressionParser
 
         // Catch function definations
         BlockFunctionBodyStack.Push([]);
-        while (TokenStack.Peek().Type != TokenKind.Eof)
+        while (TokenStack.Peek().Type != TokenType.Eof)
         {
             GetStatementLine();
         }
@@ -842,7 +515,7 @@ public partial class ExpressionParser
         foreach (var header in headers)
         {
             var script = new Script(lambdas[header].Compile(), header);
-            GM.FunctionManager.Override(script);
+            GML.FunctionManager.Override(script);
         }                
     }
 }
@@ -850,7 +523,7 @@ public partial class ExpressionParser
 // Main Parser
 public partial class ExpressionParser
 {
-    private bool TryPopToken(TokenKind type, out Token? token)
+    private bool TryPopToken(TokenType type, out Token? token)
     {
         if (TokenStack.Peek().Type == type)
         {
@@ -873,17 +546,17 @@ public partial class ExpressionParser
         {
             switch (TokenStack.Peek().Type)
             {
-                case TokenKind.LogicalAnd:
+                case TokenType.LogicalAnd:
                 TokenStack.Pop();
                 val = Expression.And(val, PopRelational());
                 continue;
                 
-                case TokenKind.LogicalOr:
+                case TokenType.LogicalOr:
                 TokenStack.Pop();
                 val = Expression.Or(val, PopRelational());
                 
                 continue;
-                case TokenKind.LogicalXor:
+                case TokenType.LogicalXor:
                 TokenStack.Pop();
                 val = Expression.ExclusiveOr(val, PopRelational());
                 continue;
@@ -901,33 +574,33 @@ public partial class ExpressionParser
         {
             switch (TokenStack.Peek().Type)
             {
-                case TokenKind.LessThan:
+                case TokenType.LessThan:
                 TokenStack.Pop();
                 val = ToGMValue(Expression.LessThan(val, PopBitwise()));
                 continue;
 
-                case TokenKind.LessThanOrEqual:
+                case TokenType.LessThanOrEqual:
                 TokenStack.Pop();
                 val = ToGMValue(Expression.LessThanOrEqual(val, PopBitwise()));
                 continue;
 
-                case TokenKind.GreaterThan:
+                case TokenType.GreaterThan:
                 TokenStack.Pop();
                 val = ToGMValue(Expression.GreaterThan(val, PopBitwise()));
                 continue;
 
-                case TokenKind.GreaterThanOrEqual:
+                case TokenType.GreaterThanOrEqual:
                 TokenStack.Pop();
                 val = ToGMValue(Expression.GreaterThanOrEqual(val, PopBitwise()));
                 continue;
-                case TokenKind.Inequality:
+                case TokenType.Inequality:
 
                 TokenStack.Pop();
                 val = ToGMValue(Expression.NotEqual(val, PopBitwise()));
                 continue;
 
-                case TokenKind.Equality:
-                case TokenKind.Assignment:
+                case TokenType.Equality:
+                case TokenType.Assignment:
                 TokenStack.Pop();
                 val = ToGMValue(Expression.Equal(val, PopBitwise()));
                 continue;
@@ -945,17 +618,17 @@ public partial class ExpressionParser
         {
             switch (TokenStack.Peek().Type)
             {
-                case TokenKind.BitwiseAnd:
+                case TokenType.BitwiseAnd:
                 TokenStack.Pop();
                 val = Expression.And(val, PopRelational());
                 continue;
                 
-                case TokenKind.BitwiseOr:
+                case TokenType.BitwiseOr:
                 TokenStack.Pop();
                 val = Expression.Or(val, PopRelational());
                 
                 continue;
-                case TokenKind.BitwiseXor:
+                case TokenType.BitwiseXor:
                 TokenStack.Pop();
                 val = Expression.ExclusiveOr(val, PopRelational());
                 continue;
@@ -973,12 +646,12 @@ public partial class ExpressionParser
         {
             switch (TokenStack.Peek().Type)
             {
-                case TokenKind.ShiftLeft:
+                case TokenType.ShiftLeft:
                 TokenStack.Pop();
                 val = Expression.LeftShift(val, PopAdditive());
                 continue;
                 
-                case TokenKind.ShiftRight:
+                case TokenType.ShiftRight:
                 TokenStack.Pop();
                 val = Expression.RightShift(val, PopAdditive());
                 continue;
@@ -997,12 +670,12 @@ public partial class ExpressionParser
         {
             switch (TokenStack.Peek().Type)
             {
-                case TokenKind.Plus:
+                case TokenType.Plus:
                 TokenStack.Pop();
                 val = Expression.Add(val, PopTerm());
                 continue;
                 
-                case TokenKind.Minus:
+                case TokenType.Minus:
                 TokenStack.Pop();
                 val = Expression.Subtract(val, PopTerm());
                 continue;
@@ -1020,22 +693,22 @@ public partial class ExpressionParser
         {
             switch (TokenStack.Peek().Type)
             {
-                case TokenKind.Multiply:
+                case TokenType.Multiply:
                 TokenStack.Pop();
                 val = Expression.Multiply(val, PopPrefix());
                 continue;
 
-                case TokenKind.Divide:
+                case TokenType.Divide:
                 TokenStack.Pop();
                 val = Expression.Divide(val, PopPrefix());
                 continue;
 
-                case TokenKind.Mod:
+                case TokenType.Mod:
                 TokenStack.Pop();
                 val = Expression.Modulo(val, PopPrefix());
                 continue;
 
-                case TokenKind.Div:
+                case TokenType.Div:
                 TokenStack.Pop();
                 val = Expression.Divide(ToGMValue(Expression.Convert(Expression.Field(val, "Value"), typeof(int))), PopPrefix());
                 continue;
@@ -1050,29 +723,29 @@ public partial class ExpressionParser
     {
         switch (TokenStack.Peek().Type)
         {
-            case TokenKind.Plus:
+            case TokenType.Plus:
             TokenStack.Pop();
             return PopPrefix();
 
-            case TokenKind.Minus:
+            case TokenType.Minus:
             TokenStack.Pop();
             return Expression.Negate(PopPrefix());
 
-            case TokenKind.Not:
+            case TokenType.Not:
             TokenStack.Pop();
             return Expression.Not(PopPrefix());
             
-            case TokenKind.BitwiseComplement:
+            case TokenType.BitwiseComplement:
             TokenStack.Pop();
             return Expression.Not(PopPrefix());
             
-            case TokenKind.Increment:
+            case TokenType.Increment:
             TokenStack.Pop();
-            return Expression.AddAssign(PopPrefix(), Expression.Constant(new GMValue(1f), typeof(GMValue)));
+            return Expression.AddAssign(PopPrefix(), Expression.Constant(new RValue(1f), typeof(RValue)));
 
-            case TokenKind.Decrement:
+            case TokenType.Decrement:
             TokenStack.Pop();
-            return Expression.SubtractAssign(PopPrefix(), Expression.Constant(new GMValue(1f), typeof(GMValue)));
+            return Expression.SubtractAssign(PopPrefix(), Expression.Constant(new RValue(1f), typeof(RValue)));
 
             default:
             return PopPostfix();
@@ -1086,29 +759,29 @@ public partial class ExpressionParser
         {
             switch (TokenStack.Peek().Type)
             {
-                case TokenKind.Increment:
+                case TokenType.Increment:
                 {
                     TokenStack.Pop();
-                    ParameterExpression temp = Expression.Variable(typeof(GMValue));
+                    ParameterExpression temp = Expression.Variable(typeof(RValue));
                     val = Expression.Block
                     (
                         [temp],
                         Expression.Assign(temp, val),
-                        Expression.AddAssign(val, Expression.Constant(new GMValue(1f), typeof(GMValue))),
+                        Expression.AddAssign(val, Expression.Constant(new RValue(1f), typeof(RValue))),
                         temp
                     );
                 }
                 break;
                 
-                case TokenKind.Decrement:
+                case TokenType.Decrement:
                 {
                     TokenStack.Pop();
-                    ParameterExpression temp = Expression.Variable(typeof(GMValue));
+                    ParameterExpression temp = Expression.Variable(typeof(RValue));
                     val = Expression.Block
                     (
                         [temp],
                         Expression.Assign(temp, val),
-                        Expression.SubtractAssign(val, Expression.Constant(new GMValue(1f), typeof(GMValue))),
+                        Expression.SubtractAssign(val, Expression.Constant(new RValue(1f), typeof(RValue))),
                         temp
                     );
                 }
@@ -1128,7 +801,7 @@ public partial class ExpressionParser
     private Expression PopAccess()
     {
         // Detect new keyword
-        bool isNew = TryPopToken(TokenKind.New, out _); // If new is detected, capture the first method caller as ctor
+        bool isNew = TryPopToken(TokenType.New, out _); // If new is detected, capture the first method caller as ctor
         bool isCtorCaptured = false;
 
         // The call and access is combined as they can appear together as A = A() | A.B | I[B]
@@ -1139,25 +812,25 @@ public partial class ExpressionParser
         {
             switch (TokenStack.Peek().Type)
             {
-                case TokenKind.Dot:
+                case TokenType.Dot:
                 accessed = val;
                 TokenStack.Pop();
-                if (!TryPopToken(TokenKind.Identifier, out Token? member))
+                if (!TryPopToken(TokenType.Identifier, out Token? member))
                 {
                     throw new Exception($"Expected Member name, got {member?.Type}.");
                 }
-                val = GMMember(val, Expression.Constant(member!.Lexeme!));
+                val = GMMember(val, Expression.Constant(member!.Value!));
                 break;
                 
-                case TokenKind.OpeningSquareBracket:
+                case TokenType.OpeningSquareBracket:
                 val = GMIndexer(val, PopIndices());
                 break;
 
-                case TokenKind.OpeningParenthesis:
+                case TokenType.OpeningParenthesis:
                 var args = PopArguments();
                 if (isNew && !isCtorCaptured)
                 {
-                    var caller = Expression.Variable(typeof(GMValue));
+                    var caller = Expression.Variable(typeof(RValue));
                     val = Expression.Block
                     (
                         [caller],
@@ -1191,43 +864,43 @@ public partial class ExpressionParser
     private void PopParameters(out Expression initializer)
     {
         List<Expression> inits = [];
-        if (!TryPopToken(TokenKind.OpeningParenthesis, out _)) throw new Exception("Expected closing parenthesis for callable invokement.");
-        while (TokenStack.Peek().Type == TokenKind.Identifier)
+        if (!TryPopToken(TokenType.OpeningParenthesis, out _)) throw new Exception("Expected closing parenthesis for callable invokement.");
+        while (TokenStack.Peek().Type == TokenType.Identifier)
         {
             var token = TokenStack.Pop();
-            var name = token.Lexeme ?? "";
-            var variable = Expression.Variable(typeof(GMValue), name);
+            var name = token.Value ?? "";
+            var variable = Expression.Variable(typeof(RValue), name);
             BlockScopeStack.Peek().Add(name, variable);
-            if (TokenStack.Peek().Type == TokenKind.Assignment)
+            if (TokenStack.Peek().Type == TokenType.Assignment)
             {
                 TokenStack.Pop();
                 inits.Add(Expression.Assign(variable, PopExpression()));
             }
-            if (TokenStack.Peek().Type == TokenKind.Comma) TokenStack.Pop();
+            if (TokenStack.Peek().Type == TokenType.Comma) TokenStack.Pop();
         }
-        if (!TryPopToken(TokenKind.ClosingParenthesis, out _)) throw new Exception("Expected closing parenthesis for callable invokement.");
+        if (!TryPopToken(TokenType.ClosingParenthesis, out _)) throw new Exception("Expected closing parenthesis for callable invokement.");
         if (inits.Count == 0) initializer = Expression.Empty();
         else initializer = Expression.Block(inits);
     }
 
     private Expression[] PopArguments()
     {
-        if (!TryPopToken(TokenKind.OpeningParenthesis, out _))
+        if (!TryPopToken(TokenType.OpeningParenthesis, out _))
         {
             throw new Exception("Expected closing parenthesis for callable invokement.");
         }
         List<Expression> arguments = [];
         var next = TokenStack.Peek();
-        if (next.Type != TokenKind.ClosingParenthesis && next.Type != TokenKind.Eof)
+        if (next.Type != TokenType.ClosingParenthesis && next.Type != TokenType.Eof)
         {
             arguments.Add(PopExpression());
         }
-        while (TokenStack.Peek().Type == TokenKind.Comma)
+        while (TokenStack.Peek().Type == TokenType.Comma)
         {
             TokenStack.Pop();
             arguments.Add(PopExpression());
         }
-        if (!TryPopToken(TokenKind.ClosingParenthesis, out _))
+        if (!TryPopToken(TokenType.ClosingParenthesis, out _))
         {
             throw new Exception("Expected closing parenthesis for callable invokement.");
         }
@@ -1236,18 +909,18 @@ public partial class ExpressionParser
 
     private Expression[] PopIndices()
     {
-        if (TokenStack.Peek().Type != TokenKind.OpeningSquareBracket)
+        if (TokenStack.Peek().Type != TokenType.OpeningSquareBracket)
             throw new Exception($"Expected Closing Square Bracket, got {TokenStack.Peek().Type}");
         TokenStack.Pop();
 
         List<Expression> indices = [];
-        while (TokenStack.Peek().Type != TokenKind.ClosingSquareBracket)
+        while (TokenStack.Peek().Type != TokenType.ClosingSquareBracket)
         {
             indices.Add(PopExpression());
             var next = TokenStack.Peek();
-            if (next.Type == TokenKind.Comma)
+            if (next.Type == TokenType.Comma)
                 TokenStack.Pop();
-            else if (next.Type != TokenKind.ClosingSquareBracket)
+            else if (next.Type != TokenType.ClosingSquareBracket)
                 throw new Exception($"Expected Closing Square Bracket, got {next.Type}.");
         }
         TokenStack.Pop();
@@ -1262,11 +935,11 @@ public partial class ExpressionParser
     {
         TokenStack.Pop();
         // Try pop name
-        TryPopToken(TokenKind.Identifier, out var tokenName); string? name = tokenName?.Lexeme;
+        TryPopToken(TokenType.Identifier, out var tokenName); string? name = tokenName?.Value;
         // Try pop arguments
         BlockScopeStack.Push([]); PopParameters(out _); BlockScopeStack.Pop();
         // Try pop base constructor
-        if (TryPopToken(TokenKind.Colon, out _)) PopAccess(); TryPopToken(TokenKind.Constructor, out _);
+        if (TryPopToken(TokenType.Colon, out _)) PopAccess(); TryPopToken(TokenType.Constructor, out _);
         // Pop function body.
         PopBlock();
         if (name is not null) return new FunctionHeaderExpression(name);
@@ -1278,7 +951,7 @@ public partial class ExpressionParser
         TokenStack.Pop();
         // Try pop the name for the function.
         name = null;
-        if (TryPopToken(TokenKind.Identifier, out var tokenName)) name = tokenName!.Lexeme ?? throw new Exception();
+        if (TryPopToken(TokenType.Identifier, out var tokenName)) name = tokenName!.Value ?? throw new Exception();
         
         // Function components
         bool isCtor = false; Expression? baseCtor = null;
@@ -1294,14 +967,14 @@ public partial class ExpressionParser
         {
             PopParameters(out initializer);
             // Try get base Constructor if it has.
-            if (TryPopToken(TokenKind.Colon, out _))
+            if (TryPopToken(TokenType.Colon, out _))
             {
                 baseCtor = GMCall(ToGMValue(caller), PopFactor(), PopArguments());
                 isCtor = true;
             }
 
             // Check if the function is constructor.
-            if (TryPopToken(TokenKind.Constructor, out _))
+            if (TryPopToken(TokenType.Constructor, out _))
             {
                 isCtor = true;
             } // The exception only occur if having base Ctors while doesn't have constructor keyword.
@@ -1341,56 +1014,56 @@ public partial class ExpressionParser
         switch (TokenStack.Peek().Type)
         {
             /// Number
-            case TokenKind.Real:
-            return Expression.Constant(new GMValue() { Value = ((RealToken)TokenStack.Pop()).Value }, typeof(GMValue));
+            case TokenType.Real:
+            return Expression.Constant(new RValue() { Value = ((RealToken)TokenStack.Pop()).Value }, typeof(RValue));
             /// String
-            case TokenKind.StringLiteral:
-            return Expression.Constant(new GMValue() { Value = ((StringLiteralToken)TokenStack.Pop()).Value }, typeof(GMValue));
+            case TokenType.StringLiteral:
+            return Expression.Constant(new RValue() { Value = ((StringToken)TokenStack.Pop()).Value }, typeof(RValue));
             /// Boolean
-            case TokenKind.Boolean:
-            return Expression.Constant(new GMValue() { Value = ((BooleanToken)TokenStack.Pop()).Value }, typeof(GMValue));
+            case TokenType.Boolean:
+            return Expression.Constant(new RValue() { Value = ((BooleanToken)TokenStack.Pop()).Value }, typeof(RValue));
             /// Asset / Field / Variable
-            case TokenKind.Identifier:
+            case TokenType.Identifier:
             // In expection, this case will only be called for the first identifier
             // I'm not sure if it will be called out of such condition
-            return FindIdentifierExpression(TokenStack.Pop().Lexeme!) ?? throw new Exception("Unclaimed variable");
+            return FindIdentifierExpression(TokenStack.Pop().Value!) ?? throw new Exception("Unclaimed variable");
             /// Group
-            case TokenKind.OpeningParenthesis:
+            case TokenType.OpeningParenthesis:
             {
                 TokenStack.Pop();
                 expression = Expression.Block(PopExpression());
-                if (!TryPopToken(TokenKind.ClosingParenthesis, out Token? _))
+                if (!TryPopToken(TokenType.ClosingParenthesis, out Token? _))
                     throw new Exception("Expected Closing Parenthesis.");
                 return expression;
             }
             /// Struct
-            case TokenKind.OpeningCurlyBrace:
+            case TokenType.OpeningCurlyBrace:
             {
                 TokenStack.Pop();
                 List<Expression> initializer = [];
-                var inst = Expression.Variable(typeof(GMValue));
+                var inst = Expression.Variable(typeof(RValue));
                 SelfStack.Push(inst); BlockScopeStack.Push([]);
                 {
                     initializer.Add(Expression.Assign(inst, ToGMValue(Expression.New(GMStructConstructor))));
-                    while (TryPopToken(TokenKind.Identifier, out var key))
+                    while (TryPopToken(TokenType.Identifier, out var key))
                     {
-                        if (TryPopToken(TokenKind.Colon, out _))
+                        if (TryPopToken(TokenType.Colon, out _))
                         {
-                            initializer.Add(Expression.Assign(GMMember(inst, Expression.Constant(key!.Lexeme)), PopExpression()));
+                            initializer.Add(Expression.Assign(GMMember(inst, Expression.Constant(key!.Value)), PopExpression()));
                         }
                         else throw new Exception("Expects value assignment for struct.");
-                        if (!TryPopToken(TokenKind.Comma, out _)) break;
+                        if (!TryPopToken(TokenType.Comma, out _)) break;
                     }
-                    if (!TryPopToken(TokenKind.ClosingCurlyBrace, out _)) throw new Exception("Expects Closing Curly Brace for struct declearation.");
+                    if (!TryPopToken(TokenType.ClosingCurlyBrace, out _)) throw new Exception("Expects Closing Curly Brace for struct declearation.");
                     initializer.Add(inst);
                 }
                 SelfStack.Pop(); BlockScopeStack.Pop();
                 return Expression.Block([inst], initializer);
             }
             /// Function
-            case TokenKind.Function:
+            case TokenType.Function:
             {  
-                var callee  = Expression.Parameter(typeof(GMValue), "LAMBDA_CALLEE");
+                var callee  = Expression.Parameter(typeof(RValue), "LAMBDA_CALLEE");
                 var func    = PopFunction(out var name, (_) => callee);
                 
                 if (name is not null)
@@ -1409,12 +1082,12 @@ public partial class ExpressionParser
         if (IsFirstCompile)
         {
             var counter = 1;
-            if (!TryPopToken(TokenKind.OpeningCurlyBrace, out Token? _)) throw new Exception();
+            if (!TryPopToken(TokenType.OpeningCurlyBrace, out Token? _)) throw new Exception();
             while (counter > 0)
             {
                 var token = TokenStack.Pop();
-                if (token.Type == TokenKind.OpeningCurlyBrace) counter ++;
-                if (token.Type == TokenKind.ClosingCurlyBrace) counter --;
+                if (token.Type == TokenType.OpeningCurlyBrace) counter ++;
+                if (token.Type == TokenType.ClosingCurlyBrace) counter --;
             }
             return Expression.Empty();
         }
@@ -1424,20 +1097,20 @@ public partial class ExpressionParser
         var headers = GetFunctionHeaders();
         foreach (var header in headers)
         {
-            funcs.Add(header, Expression.Parameter(typeof(GMValue)));
+            funcs.Add(header, Expression.Parameter(typeof(RValue)));
         }
 
         // Push block scope
         BlockScopeStack.Push(funcs); BlockFunctionBodyStack.Push([]);
         // Capture body statements
         List<Expression> blockStmts = [];
-        if (!TryPopToken(TokenKind.OpeningCurlyBrace, out Token? _)) throw new Exception();
-        while (TokenStack.Peek().Type != TokenKind.ClosingCurlyBrace && TokenStack.Peek().Type != TokenKind.Eof)
+        if (!TryPopToken(TokenType.OpeningCurlyBrace, out Token? _)) throw new Exception();
+        while (TokenStack.Peek().Type != TokenType.ClosingCurlyBrace && TokenStack.Peek().Type != TokenType.Eof)
         {
             blockStmts.Add(GetStatementLine());
         }
-        if (!TryPopToken(TokenKind.ClosingCurlyBrace, out Token? _)) throw new Exception();
-        while (TokenStack.Peek().Type == TokenKind.Semicolon) TokenStack.Pop();
+        if (!TryPopToken(TokenType.ClosingCurlyBrace, out Token? _)) throw new Exception();
+        while (TokenStack.Peek().Type == TokenType.Semicolon) TokenStack.Pop();
 
         // Function definition assignment
         List<Expression> definitions = [];
@@ -1457,41 +1130,41 @@ public partial class ExpressionParser
         var next = TokenStack.Pop();
         switch (next.Type)
         {
-            case TokenKind.Assignment:
+            case TokenType.Assignment:
             return Expression.Assign(access, PopExpression());
-            case TokenKind.AdditionAssignment:
+            case TokenType.AdditionAssignment:
             return Expression.AddAssign(access, PopExpression());
-            case TokenKind.SubtractionAssignment:
+            case TokenType.SubtractionAssignment:
             return Expression.SubtractAssign(access, PopExpression());
-            case TokenKind.MultiplyAssignment:
+            case TokenType.MultiplyAssignment:
             return Expression.MultiplyAssign(access, PopExpression());
-            case TokenKind.DivideAssignment:
+            case TokenType.DivideAssignment:
             return Expression.DivideAssign(access, PopExpression());
-            case TokenKind.OrAssignment:
+            case TokenType.OrAssignment:
             return Expression.OrAssign(access, PopExpression());
-            case TokenKind.AndAssignment:
+            case TokenType.AndAssignment:
             return Expression.AndAssign(access, PopExpression());
-            case TokenKind.XorAssignment:
+            case TokenType.XorAssignment:
             return Expression.ExclusiveOrAssign(access, PopExpression());
-            case TokenKind.Increment:
+            case TokenType.Increment:
             {
-                ParameterExpression temp = Expression.Variable(typeof(GMValue));
+                ParameterExpression temp = Expression.Variable(typeof(RValue));
                 return Expression.Block
                 (
                     [temp],
                     Expression.Assign(temp, access),
-                    Expression.AddAssign(access, Expression.Constant(new GMValue(1f), typeof(GMValue))),
+                    Expression.AddAssign(access, Expression.Constant(new RValue(1f), typeof(RValue))),
                     temp
                 );
             }
-            case TokenKind.Decrement:
+            case TokenType.Decrement:
             {
-                ParameterExpression temp = Expression.Variable(typeof(GMValue));
+                ParameterExpression temp = Expression.Variable(typeof(RValue));
                 return Expression.Block
                 (
                     [temp],
                     Expression.Assign(temp, access),
-                    Expression.SubtractAssign(access, Expression.Constant(new GMValue(1f), typeof(GMValue))),
+                    Expression.SubtractAssign(access, Expression.Constant(new RValue(1f), typeof(RValue))),
                     temp
                 );
             }
@@ -1515,8 +1188,8 @@ public partial class ExpressionParser
         BlockScopeStack.Push([]);
 
         bool isRoot;
-        isRoot = !TryPopToken(TokenKind.OpeningCurlyBrace, out Token? _);
-        while (TokenStack.Peek().Type != TokenKind.ClosingCurlyBrace && TokenStack.Peek().Type != TokenKind.Eof)
+        isRoot = !TryPopToken(TokenType.OpeningCurlyBrace, out Token? _);
+        while (TokenStack.Peek().Type != TokenType.ClosingCurlyBrace && TokenStack.Peek().Type != TokenType.Eof)
         {
             var stmt = GetStatementLine();
             if (stmt is FunctionHeaderExpression headerExpression)
@@ -1524,7 +1197,7 @@ public partial class ExpressionParser
                 headers.Add(headerExpression.Name!);
             }
         }
-        if (!isRoot && !TryPopToken(TokenKind.ClosingCurlyBrace, out Token? _)) throw new Exception();
+        if (!isRoot && !TryPopToken(TokenType.ClosingCurlyBrace, out Token? _)) throw new Exception();
 
         BlockScopeStack.Pop();
         IsFirstCompile = false;
@@ -1543,11 +1216,11 @@ public partial class ExpressionParser
     /// </remarks>
     private Expression GetStatement()
     {
-        if (TokenStack.Peek().Type == TokenKind.OpeningCurlyBrace)
+        if (TokenStack.Peek().Type == TokenType.OpeningCurlyBrace)
         {
             return PopBlock();
         }
-        else if (TokenStack.Peek().Type == TokenKind.If)
+        else if (TokenStack.Peek().Type == TokenType.If)
         {
             TokenStack.Pop();
             var condition = Expression.NotEqual
@@ -1555,19 +1228,19 @@ public partial class ExpressionParser
                 PopExpression(),
                 Expression.New(GMValueConstructor, Expression.Constant(0, typeof(object)))
             );
-            if (TokenStack.Peek().Type == TokenKind.Then)
+            if (TokenStack.Peek().Type == TokenType.Then)
             {
                 TokenStack.Pop();
             }
             Expression body = GetStatementLine();
-            if (TokenStack.Peek().Type == TokenKind.Else)
+            if (TokenStack.Peek().Type == TokenType.Else)
             {
                 TokenStack.Pop();
                 return Expression.IfThenElse(condition, body, GetStatementLine());
             }
             return Expression.IfThen(condition, body);
         }
-        else if (TokenStack.Peek().Type == TokenKind.While)
+        else if (TokenStack.Peek().Type == TokenType.While)
         {
             TokenStack.Pop();
             var loop = new StatementLabelPair();
@@ -1579,7 +1252,7 @@ public partial class ExpressionParser
             StatementLabelStack.Push(loop);
             var body = GetStatementLine();
             StatementLabelStack.Pop();
-            if (TokenStack.Peek().Type == TokenKind.Do) TokenStack.Pop();
+            if (TokenStack.Peek().Type == TokenType.Do) TokenStack.Pop();
             return Expression.Block(Expression.Loop(Expression.Block
             (
                 Expression.Label(loop.Begin),
@@ -1587,14 +1260,14 @@ public partial class ExpressionParser
                 body
             )), Expression.Label(loop.End));
         }
-        else if (TokenStack.Peek().Type == TokenKind.Do)
+        else if (TokenStack.Peek().Type == TokenType.Do)
         {
             TokenStack.Pop();
             var loop = new StatementLabelPair();
             StatementLabelStack.Push(loop);
             var body = GetStatementLine();
             StatementLabelStack.Pop();
-            if (!TryPopToken(TokenKind.Until, out Token? _)) throw new Exception("ExpectedUntil");
+            if (!TryPopToken(TokenType.Until, out Token? _)) throw new Exception("ExpectedUntil");
             var condition = Expression.NotEqual
             (
                 PopExpression(),
@@ -1610,14 +1283,14 @@ public partial class ExpressionParser
                 )), Expression.Label(loop.End)
             );
         }
-        else if (TokenStack.Peek().Type == TokenKind.For)
+        else if (TokenStack.Peek().Type == TokenType.For)
         {
             TokenStack.Pop();
             var loop = new StatementLabelPair();
             // "For" is very weird in GM. Any legal statement including control flow and blocks can be used in for.
             // example of legal "for" statements:
             // for (i = 0 i<3; {case 3:exit};;;)func();
-            if (!TryPopToken(TokenKind.OpeningParenthesis, out Token? _)) throw new Exception();
+            if (!TryPopToken(TokenType.OpeningParenthesis, out Token? _)) throw new Exception();
             var initializer = GetStatementLine();
             //match(Token.Semicolon); // Taken care of by stmt();
             var condition = Expression.NotEqual
@@ -1625,9 +1298,9 @@ public partial class ExpressionParser
                 PopExpression(),
                 Expression.New(GMValueConstructor, Expression.Constant(0, typeof(object)))
             );
-            if (!TryPopToken(TokenKind.Semicolon, out Token? _)) throw new Exception();
+            if (!TryPopToken(TokenType.Semicolon, out Token? _)) throw new Exception();
             var iterator = GetStatementLine();
-            if (!TryPopToken(TokenKind.ClosingParenthesis, out Token? _)) throw new Exception();
+            if (!TryPopToken(TokenType.ClosingParenthesis, out Token? _)) throw new Exception();
             StatementLabelStack.Push(loop);
             var body = GetStatementLine();
             StatementLabelStack.Pop();
@@ -1639,27 +1312,27 @@ public partial class ExpressionParser
                 iterator
             )), Expression.Label(loop.End));
         }
-        else if (TokenStack.Peek().Type == TokenKind.Break)
+        else if (TokenStack.Peek().Type == TokenType.Break)
         {
             TokenStack.Pop();
             return Expression.Break(StatementLabelStack.Peek().End);
         }
-        else if (TokenStack.Peek().Type == TokenKind.Continue)
+        else if (TokenStack.Peek().Type == TokenType.Continue)
         {
             TokenStack.Pop();
             return Expression.Continue(StatementLabelStack.Peek().Begin);
         }
-        else if (TokenStack.Peek().Type == TokenKind.Exit)
+        else if (TokenStack.Peek().Type == TokenType.Exit)
         {
             TokenStack.Pop();
             return Expression.Return(ReturnStack.Peek(), Expression.Constant(0));
         }
-        else if (TokenStack.Peek().Type == TokenKind.Return)
+        else if (TokenStack.Peek().Type == TokenType.Return)
         {
             TokenStack.Pop();
             return Expression.Return(ReturnStack.Peek(), Expression.Field(PopExpression(), "Value"));
         }
-        else if (TokenStack.Peek().Type == TokenKind.Repeat)
+        else if (TokenStack.Peek().Type == TokenType.Repeat)
         {
             TokenStack.Pop();
             var loop = new StatementLabelPair();
@@ -1679,111 +1352,111 @@ public partial class ExpressionParser
                 Expression.Assign(counter, Expression.Add(counter, Expression.Constant(1f)))
         )), Expression.Label(loop.End));
         }
-        else if (TokenStack.Peek().Type == TokenKind.Var)
+        else if (TokenStack.Peek().Type == TokenType.Var)
         {
             TokenStack.Pop();
             List<Expression> inits = [];
-            while (TokenStack.Peek().Type == TokenKind.Identifier)
+            while (TokenStack.Peek().Type == TokenType.Identifier)
             {
                 var token = TokenStack.Pop();
-                if (TokenStack.Peek().Type == TokenKind.OpeningParenthesis)
+                if (TokenStack.Peek().Type == TokenType.OpeningParenthesis)
                 {
                     TokenStack.Push(token);
                     break;
                 }
-                var name = token.Lexeme ?? "";
-                var variable = Expression.Variable(typeof(GMValue));
+                var name = token.Value ?? "";
+                var variable = Expression.Variable(typeof(RValue));
                 BlockScopeStack.Peek().Add(name, variable);
-                if (TokenStack.Peek().Type == TokenKind.Assignment)
+                if (TokenStack.Peek().Type == TokenType.Assignment)
                 {
                     TokenStack.Pop();
                     inits.Add(Expression.Assign(variable, PopExpression()));
                 }
                 //if (Context.IsBuiltIn(next.lexeme)) error(Error.BuiltinVariable);
-                if (TokenStack.Peek().Type == TokenKind.Comma) TokenStack.Pop();
+                if (TokenStack.Peek().Type == TokenType.Comma) TokenStack.Pop();
             }
             if (inits.Count == 0) return Expression.Empty();
             return Expression.Block(inits);
         }
-        else if (TokenStack.Peek().Type == TokenKind.Globalvar)
+        else if (TokenStack.Peek().Type == TokenType.Globalvar)
         {
             TokenStack.Pop();
             List<string> strs = [];
-            while (TokenStack.Peek().Type == TokenKind.Identifier)
+            while (TokenStack.Peek().Type == TokenType.Identifier)
             {
                 var token = TokenStack.Pop();
-                if (TokenStack.Peek().Type == TokenKind.OpeningParenthesis)
+                if (TokenStack.Peek().Type == TokenType.OpeningParenthesis)
                 {
                     TokenStack.Push(token);
                     break;
                 }
                 //if (Context.IsBuiltIn(next.lexeme)) error(Error.BuiltinVariable);
-                strs.Add(token.Lexeme ?? "");
-                if (TokenStack.Peek().Type == TokenKind.Comma) TokenStack.Pop();
+                strs.Add(token.Value ?? "");
+                if (TokenStack.Peek().Type == TokenType.Comma) TokenStack.Pop();
             }
             foreach (var str in strs)
             {
-                GlobalScope.Add(str, Expression.Variable(typeof(GMValue)));
+                GlobalScope.Add(str, Expression.Variable(typeof(RValue)));
             }
             return Expression.Empty();
         }
-        else if (TokenStack.Peek().Type == TokenKind.With)
+        else if (TokenStack.Peek().Type == TokenType.With)
         {
             TokenStack.Pop();
             var expression = PopExpression();
-            if (TokenStack.Peek().Type == TokenKind.Do) TokenStack.Pop();
+            if (TokenStack.Peek().Type == TokenType.Do) TokenStack.Pop();
             var body = GetStatementLine();
             /*
             return new With(e, GetStatementLine(), l, c);
             */
             return Expression.Empty();
         }
-        else if (TokenStack.Peek().Type == TokenKind.Default)
+        else if (TokenStack.Peek().Type == TokenType.Default)
         {
             throw new Exception("Unexpected 'default' token outside the switch statement.");
         }
-        else if (TokenStack.Peek().Type == TokenKind.Case)
+        else if (TokenStack.Peek().Type == TokenType.Case)
         {
             throw new Exception("Unexpected 'case' token outside the switch statement.");
         }
-        else if (TokenStack.Peek().Type == TokenKind.Switch)
+        else if (TokenStack.Peek().Type == TokenType.Switch)
         {
             TokenStack.Pop();
             var expression = PopExpression();
-            if (!TryPopToken(TokenKind.OpeningCurlyBrace, out Token? _)) throw new Exception();
+            if (!TryPopToken(TokenType.OpeningCurlyBrace, out Token? _)) throw new Exception();
             List<Expression> exprs = [];
             List<SwitchCase> cases = [];
             var loop = new StatementLabelPair();
             StatementLabelStack.Push(loop);
             Expression defaultCase = Expression.Goto(loop.End);
-            while (TokenStack.Peek().Type != TokenKind.ClosingCurlyBrace && TokenStack.Peek().Type != TokenKind.Eof)
+            while (TokenStack.Peek().Type != TokenType.ClosingCurlyBrace && TokenStack.Peek().Type != TokenType.Eof)
             {
-                if (TokenStack.Peek().Type == TokenKind.Case)
+                if (TokenStack.Peek().Type == TokenType.Case)
                 {
                     TokenStack.Pop();
                     var condition = PopExpression();
-                    if (!TryPopToken(TokenKind.Colon, out Token? _)) throw new Exception();
+                    if (!TryPopToken(TokenType.Colon, out Token? _)) throw new Exception();
                     var label = Expression.Label();
                     cases.Add(Expression.SwitchCase(Expression.Goto(label), condition));
                     exprs.Add(Expression.Label(label));
-                    while (TokenStack.Peek().Type == TokenKind.Semicolon) TokenStack.Pop();
+                    while (TokenStack.Peek().Type == TokenType.Semicolon) TokenStack.Pop();
                     continue;
                 }
-                if (TokenStack.Peek().Type == TokenKind.Default)
+                if (TokenStack.Peek().Type == TokenType.Default)
                 {
                     TokenStack.Pop();
-                    if (!TryPopToken(TokenKind.Colon, out Token? _)) throw new Exception();
+                    if (!TryPopToken(TokenType.Colon, out Token? _)) throw new Exception();
                     var label = Expression.Label();
                     defaultCase = Expression.Goto(label);
                     exprs.Add(Expression.Label(label));
-                    while (TokenStack.Peek().Type == TokenKind.Semicolon) TokenStack.Pop();
+                    while (TokenStack.Peek().Type == TokenType.Semicolon) TokenStack.Pop();
                     continue;
                 }
                 exprs.Add(GetStatementLine());
-                while (TokenStack.Peek().Type == TokenKind.Semicolon) TokenStack.Pop();
+                while (TokenStack.Peek().Type == TokenType.Semicolon) TokenStack.Pop();
             }
             StatementLabelStack.Pop();
-            if (!TryPopToken(TokenKind.ClosingCurlyBrace, out Token? _)) throw new Exception();
+            if (!TryPopToken(TokenType.ClosingCurlyBrace, out Token? _)) throw new Exception();
 
             return Expression.Block
             (
@@ -1792,21 +1465,21 @@ public partial class ExpressionParser
                 Expression.Label(loop.End)
             );
         }
-        else if (TokenStack.Peek().Type == TokenKind.Increment)
+        else if (TokenStack.Peek().Type == TokenType.Increment)
         {
             TokenStack.Pop();
-            return Expression.AddAssign(PopPrefix(), Expression.Constant(new GMValue(1f), typeof(GMValue)));
+            return Expression.AddAssign(PopPrefix(), Expression.Constant(new RValue(1f), typeof(RValue)));
         }
-        else if (TokenStack.Peek().Type == TokenKind.Decrement)
+        else if (TokenStack.Peek().Type == TokenType.Decrement)
         {
             TokenStack.Pop();
-            return Expression.SubtractAssign(PopPrefix(), Expression.Constant(new GMValue(1f), typeof(GMValue)));
+            return Expression.SubtractAssign(PopPrefix(), Expression.Constant(new RValue(1f), typeof(RValue)));
         }
-        else if (TokenStack.Peek().Type == TokenKind.Identifier)
+        else if (TokenStack.Peek().Type == TokenType.Identifier)
         {
             return PopAssign();
         }
-        else if (TokenStack.Peek().Type == TokenKind.Function)
+        else if (TokenStack.Peek().Type == TokenType.Function)
         {
             if (IsFirstCompile)
             {
@@ -1819,25 +1492,25 @@ public partial class ExpressionParser
             
             return ToGMValue(func);
         }
-        else if (TokenStack.Peek().Type == TokenKind.Enum)
+        else if (TokenStack.Peek().Type == TokenType.Enum)
         {
             TokenStack.Pop();
                 List<Expression> initializer = [];
-                var inst = Expression.Variable(typeof(GMValue));
+                var inst = Expression.Variable(typeof(RValue));
                 SelfStack.Push(inst); BlockScopeStack.Push([]);
                 {
                     initializer.Add(Expression.Assign(inst, ToGMValue(Expression.New(GMStructConstructor))));
                     var counter = 0;
-                    while (TryPopToken(TokenKind.Identifier, out var key))
+                    while (TryPopToken(TokenType.Identifier, out var key))
                     {
-                        if (TryPopToken(TokenKind.Assignment, out _))
-                            initializer.Add(Expression.Assign(GMMember(inst, Expression.Constant(key!.Lexeme)), PopExpression()));
+                        if (TryPopToken(TokenType.Assignment, out _))
+                            initializer.Add(Expression.Assign(GMMember(inst, Expression.Constant(key!.Value)), PopExpression()));
                         else
-                            initializer.Add(Expression.Assign(GMMember(inst, Expression.Constant(key!.Lexeme)), Expression.Constant(new GMValue(counter))));
-                        if (!TryPopToken(TokenKind.Comma, out _)) break;
+                            initializer.Add(Expression.Assign(GMMember(inst, Expression.Constant(key!.Value)), Expression.Constant(new RValue(counter))));
+                        if (!TryPopToken(TokenType.Comma, out _)) break;
                         counter ++;
                     }
-                    if (!TryPopToken(TokenKind.ClosingCurlyBrace, out _)) throw new Exception("Expects Closing Curly Brace for struct declearation.");
+                    if (!TryPopToken(TokenType.ClosingCurlyBrace, out _)) throw new Exception("Expects Closing Curly Brace for struct declearation.");
                     initializer.Add(inst);
                 }
                 SelfStack.Pop(); BlockScopeStack.Pop();
@@ -1856,7 +1529,7 @@ public partial class ExpressionParser
     private Expression GetStatementLine()
     {
         var statement = GetStatement();
-        while (TokenStack.Peek().Type == TokenKind.Semicolon) TokenStack.Pop();
+        while (TokenStack.Peek().Type == TokenType.Semicolon) TokenStack.Pop();
         return statement;
     }
 }
