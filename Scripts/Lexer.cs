@@ -159,85 +159,6 @@ internal class BooleanToken : Token
 }
 #endregion
 
-internal static class Keywords
-{
-    public static readonly TokenRecord Break                   = new(TokenType.Break,                 "break"      );
-    public static readonly TokenRecord Continue                = new(TokenType.Continue,              "continue"   );
-    public static readonly TokenRecord Return                  = new(TokenType.Return,                "return"     );
-    public static readonly TokenRecord If                      = new(TokenType.If,                    "if"         );
-    public static readonly TokenRecord Then                    = new(TokenType.Then,                  "then"       );
-    public static readonly TokenRecord Else                    = new(TokenType.Else,                  "else"       );
-    public static readonly TokenRecord While                   = new(TokenType.While,                 "while"      );
-    public static readonly TokenRecord Until                   = new(TokenType.Until,                 "until"      );
-    public static readonly TokenRecord Do                      = new(TokenType.Do,                    "do"         );
-    public static readonly TokenRecord For                     = new(TokenType.For,                   "for"        );
-    public static readonly TokenRecord NotWord                 = new(TokenType.Not,                   "not"        );
-    public static readonly TokenRecord And                     = new(TokenType.LogicalAnd,            "and"        );
-    public static readonly TokenRecord Or                      = new(TokenType.LogicalOr,             "or"         );
-    public static readonly TokenRecord Xor                     = new(TokenType.LogicalXor,            "xor"        );
-    public static readonly TokenRecord Repeat                  = new(TokenType.Repeat,                "repeat"     );
-    public static readonly TokenRecord With                    = new(TokenType.With,                  "with"       );
-    public static readonly TokenRecord Div                     = new(TokenType.Div,                   "div"        );
-    public static readonly TokenRecord Mod                     = new(TokenType.Mod,                   "mod"        );
-    public static readonly TokenRecord Var                     = new(TokenType.Var,                   "var"        );
-    public static readonly TokenRecord Globalvar               = new(TokenType.Globalvar,             "globalvar"  );
-    public static readonly TokenRecord Switch                  = new(TokenType.Switch,                "switch"     );
-    public static readonly TokenRecord Case                    = new(TokenType.Case,                  "case"       );
-    public static readonly TokenRecord Default                 = new(TokenType.Default,               "default"    );
-    public static readonly TokenRecord Exit                    = new(TokenType.Exit,                  "exit"       );
-    public static readonly TokenRecord Begin                   = new(TokenType.OpeningCurlyBrace,     "begin"      );
-    public static readonly TokenRecord End                     = new(TokenType.ClosingCurlyBrace,     "end"        );
-    public static readonly TokenRecord Self                    = new(TokenType.Identifier,            "self"       );
-    public static readonly TokenRecord Other                   = new(TokenType.Identifier,            "other"      );
-    public static readonly TokenRecord All                     = new(TokenType.Identifier,            "all"        );
-    public static readonly TokenRecord Noone                   = new(TokenType.Identifier,            "noone"      );
-    public static readonly TokenRecord Global                  = new(TokenType.Identifier,            "global"     );
-    public static readonly TokenRecord BitwiseComplement       = new(TokenType.BitwiseComplement,     "~"          );
-    public static readonly TokenRecord Not                     = new(TokenType.Not,                   "!"          );
-    public static readonly TokenRecord Inequality              = new(TokenType.Inequality,            "!="         );
-    public static readonly TokenRecord BitwiseXor              = new(TokenType.BitwiseXor,            "^"          );
-    public static readonly TokenRecord LogicalXor              = new(TokenType.LogicalXor,            "^^"         );
-    public static readonly TokenRecord XorAssignment           = new(TokenType.XorAssignment,         "^="         );
-    public static readonly TokenRecord BitwiseAnd              = new(TokenType.BitwiseAnd,            "&"          );
-    public static readonly TokenRecord LogicalAnd              = new(TokenType.LogicalAnd,            "&&"         );
-    public static readonly TokenRecord AndAssignment           = new(TokenType.AndAssignment,         "&="         );
-    public static readonly TokenRecord Multiply                = new(TokenType.Multiply,              "*"          );
-    public static readonly TokenRecord MultiplyAssignment      = new(TokenType.MultiplyAssignment,    "*="         );
-    public static readonly TokenRecord OpeningParenthesis      = new(TokenType.OpeningParenthesis,    "("          );
-    public static readonly TokenRecord ClosingParenthesis      = new(TokenType.ClosingParenthesis,    ")"          );
-    public static readonly TokenRecord Minus                   = new(TokenType.Minus,                 "-"          );
-    public static readonly TokenRecord SubtractionAssignment   = new(TokenType.SubtractionAssignment, "-="         );
-    public static readonly TokenRecord Plus                    = new(TokenType.Plus,                  "+"          );
-    public static readonly TokenRecord AdditionAssignment      = new(TokenType.AdditionAssignment,    "+="         );
-    public static readonly TokenRecord Assignment              = new(TokenType.Assignment,            "="          );
-    public static readonly TokenRecord Equality                = new(TokenType.Equality,              "=="         );
-    public static readonly TokenRecord OpeningCurlyBrace       = new(TokenType.OpeningCurlyBrace,     "{"          );
-    public static readonly TokenRecord ClosingCurlyBrace       = new(TokenType.ClosingCurlyBrace,     "}"          );
-    public static readonly TokenRecord OpeningSquareBracket    = new(TokenType.OpeningSquareBracket,  "["          );
-    public static readonly TokenRecord ClosingSquareBracket    = new(TokenType.ClosingSquareBracket,  "]"          );
-    public static readonly TokenRecord BitwiseOr               = new(TokenType.BitwiseOr,             "|"          );
-    public static readonly TokenRecord LogicalOr               = new(TokenType.LogicalOr,             "||"         );
-    public static readonly TokenRecord OrAssignment            = new(TokenType.OrAssignment,          "|="         );
-    public static readonly TokenRecord Colon                   = new(TokenType.Colon,                 ":"          );
-    public static readonly TokenRecord Semicolon               = new(TokenType.Semicolon,             ";"          );
-    public static readonly TokenRecord LessThan                = new(TokenType.LessThan,              "<"          );
-    public static readonly TokenRecord LessThanOrEqual         = new(TokenType.LessThanOrEqual,       "<="         );
-    public static readonly TokenRecord ShiftLeft               = new(TokenType.ShiftLeft,             "<<"         );
-    public static readonly TokenRecord GreaterThan             = new(TokenType.GreaterThan,           ">"          );
-    public static readonly TokenRecord GreaterThanOrEqual      = new(TokenType.GreaterThanOrEqual,    ">="         );
-    public static readonly TokenRecord ShiftRight              = new(TokenType.ShiftRight,            ">>"         );
-    public static readonly TokenRecord Comma                   = new(TokenType.Comma,                 ","          );
-    public static readonly TokenRecord Dot                     = new(TokenType.Dot,                   "."          );
-    public static readonly TokenRecord Divide                  = new(TokenType.Divide,                "/"          );
-    public static readonly TokenRecord DivideAssignment        = new(TokenType.DivideAssignment,      "/="         );
-    public static readonly TokenRecord Increment               = new(TokenType.Increment,             "++"         );
-    public static readonly TokenRecord Decrement               = new(TokenType.Decrement,             "--"         );
-    public static readonly TokenRecord Constructor = new(TokenType.Constructor,           "constructor");
-    public static readonly TokenRecord New         = new(TokenType.New,                   "new"        );
-    public static readonly TokenRecord Function    = new(TokenType.Function,              "function"   );
-    public static readonly TokenRecord Enum        = new(TokenType.Enum,                  "enum"       );
-}
-
 /// <summary>
 /// 
 /// </summary>
@@ -285,6 +206,85 @@ internal partial class Lexer
             token = t;
             return end[p];
         }
+    }
+
+    private static class Keywords
+    {
+        public static readonly TokenRecord Break                   = new(TokenType.Break,                 "break"      );
+        public static readonly TokenRecord Continue                = new(TokenType.Continue,              "continue"   );
+        public static readonly TokenRecord Return                  = new(TokenType.Return,                "return"     );
+        public static readonly TokenRecord If                      = new(TokenType.If,                    "if"         );
+        public static readonly TokenRecord Then                    = new(TokenType.Then,                  "then"       );
+        public static readonly TokenRecord Else                    = new(TokenType.Else,                  "else"       );
+        public static readonly TokenRecord While                   = new(TokenType.While,                 "while"      );
+        public static readonly TokenRecord Until                   = new(TokenType.Until,                 "until"      );
+        public static readonly TokenRecord Do                      = new(TokenType.Do,                    "do"         );
+        public static readonly TokenRecord For                     = new(TokenType.For,                   "for"        );
+        public static readonly TokenRecord NotWord                 = new(TokenType.Not,                   "not"        );
+        public static readonly TokenRecord And                     = new(TokenType.LogicalAnd,            "and"        );
+        public static readonly TokenRecord Or                      = new(TokenType.LogicalOr,             "or"         );
+        public static readonly TokenRecord Xor                     = new(TokenType.LogicalXor,            "xor"        );
+        public static readonly TokenRecord Repeat                  = new(TokenType.Repeat,                "repeat"     );
+        public static readonly TokenRecord With                    = new(TokenType.With,                  "with"       );
+        public static readonly TokenRecord Div                     = new(TokenType.Div,                   "div"        );
+        public static readonly TokenRecord Mod                     = new(TokenType.Mod,                   "mod"        );
+        public static readonly TokenRecord Var                     = new(TokenType.Var,                   "var"        );
+        public static readonly TokenRecord Globalvar               = new(TokenType.Globalvar,             "globalvar"  );
+        public static readonly TokenRecord Switch                  = new(TokenType.Switch,                "switch"     );
+        public static readonly TokenRecord Case                    = new(TokenType.Case,                  "case"       );
+        public static readonly TokenRecord Default                 = new(TokenType.Default,               "default"    );
+        public static readonly TokenRecord Exit                    = new(TokenType.Exit,                  "exit"       );
+        public static readonly TokenRecord Begin                   = new(TokenType.OpeningCurlyBrace,     "begin"      );
+        public static readonly TokenRecord End                     = new(TokenType.ClosingCurlyBrace,     "end"        );
+        public static readonly TokenRecord Self                    = new(TokenType.Identifier,            "self"       );
+        public static readonly TokenRecord Other                   = new(TokenType.Identifier,            "other"      );
+        public static readonly TokenRecord All                     = new(TokenType.Identifier,            "all"        );
+        public static readonly TokenRecord Noone                   = new(TokenType.Identifier,            "noone"      );
+        public static readonly TokenRecord Global                  = new(TokenType.Identifier,            "global"     );
+        public static readonly TokenRecord BitwiseComplement       = new(TokenType.BitwiseComplement,     "~"          );
+        public static readonly TokenRecord Not                     = new(TokenType.Not,                   "!"          );
+        public static readonly TokenRecord Inequality              = new(TokenType.Inequality,            "!="         );
+        public static readonly TokenRecord BitwiseXor              = new(TokenType.BitwiseXor,            "^"          );
+        public static readonly TokenRecord LogicalXor              = new(TokenType.LogicalXor,            "^^"         );
+        public static readonly TokenRecord XorAssignment           = new(TokenType.XorAssignment,         "^="         );
+        public static readonly TokenRecord BitwiseAnd              = new(TokenType.BitwiseAnd,            "&"          );
+        public static readonly TokenRecord LogicalAnd              = new(TokenType.LogicalAnd,            "&&"         );
+        public static readonly TokenRecord AndAssignment           = new(TokenType.AndAssignment,         "&="         );
+        public static readonly TokenRecord Multiply                = new(TokenType.Multiply,              "*"          );
+        public static readonly TokenRecord MultiplyAssignment      = new(TokenType.MultiplyAssignment,    "*="         );
+        public static readonly TokenRecord OpeningParenthesis      = new(TokenType.OpeningParenthesis,    "("          );
+        public static readonly TokenRecord ClosingParenthesis      = new(TokenType.ClosingParenthesis,    ")"          );
+        public static readonly TokenRecord Minus                   = new(TokenType.Minus,                 "-"          );
+        public static readonly TokenRecord SubtractionAssignment   = new(TokenType.SubtractionAssignment, "-="         );
+        public static readonly TokenRecord Plus                    = new(TokenType.Plus,                  "+"          );
+        public static readonly TokenRecord AdditionAssignment      = new(TokenType.AdditionAssignment,    "+="         );
+        public static readonly TokenRecord Assignment              = new(TokenType.Assignment,            "="          );
+        public static readonly TokenRecord Equality                = new(TokenType.Equality,              "=="         );
+        public static readonly TokenRecord OpeningCurlyBrace       = new(TokenType.OpeningCurlyBrace,     "{"          );
+        public static readonly TokenRecord ClosingCurlyBrace       = new(TokenType.ClosingCurlyBrace,     "}"          );
+        public static readonly TokenRecord OpeningSquareBracket    = new(TokenType.OpeningSquareBracket,  "["          );
+        public static readonly TokenRecord ClosingSquareBracket    = new(TokenType.ClosingSquareBracket,  "]"          );
+        public static readonly TokenRecord BitwiseOr               = new(TokenType.BitwiseOr,             "|"          );
+        public static readonly TokenRecord LogicalOr               = new(TokenType.LogicalOr,             "||"         );
+        public static readonly TokenRecord OrAssignment            = new(TokenType.OrAssignment,          "|="         );
+        public static readonly TokenRecord Colon                   = new(TokenType.Colon,                 ":"          );
+        public static readonly TokenRecord Semicolon               = new(TokenType.Semicolon,             ";"          );
+        public static readonly TokenRecord LessThan                = new(TokenType.LessThan,              "<"          );
+        public static readonly TokenRecord LessThanOrEqual         = new(TokenType.LessThanOrEqual,       "<="         );
+        public static readonly TokenRecord ShiftLeft               = new(TokenType.ShiftLeft,             "<<"         );
+        public static readonly TokenRecord GreaterThan             = new(TokenType.GreaterThan,           ">"          );
+        public static readonly TokenRecord GreaterThanOrEqual      = new(TokenType.GreaterThanOrEqual,    ">="         );
+        public static readonly TokenRecord ShiftRight              = new(TokenType.ShiftRight,            ">>"         );
+        public static readonly TokenRecord Comma                   = new(TokenType.Comma,                 ","          );
+        public static readonly TokenRecord Dot                     = new(TokenType.Dot,                   "."          );
+        public static readonly TokenRecord Divide                  = new(TokenType.Divide,                "/"          );
+        public static readonly TokenRecord DivideAssignment        = new(TokenType.DivideAssignment,      "/="         );
+        public static readonly TokenRecord Increment               = new(TokenType.Increment,             "++"         );
+        public static readonly TokenRecord Decrement               = new(TokenType.Decrement,             "--"         );
+        public static readonly TokenRecord Constructor = new(TokenType.Constructor,           "constructor");
+        public static readonly TokenRecord New         = new(TokenType.New,                   "new"        );
+        public static readonly TokenRecord Function    = new(TokenType.Function,              "function"   );
+        public static readonly TokenRecord Enum        = new(TokenType.Enum,                  "enum"       );
     }
 
     private int Line    = 1;

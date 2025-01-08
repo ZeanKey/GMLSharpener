@@ -8,6 +8,7 @@ using System.Reflection;
 using System.Diagnostics.CodeAnalysis;
 using System.Dynamic;
 using System.Collections;
+using System.Diagnostics;
 using GMLSharpener.GM;
 
 namespace GMLSharpener;
@@ -118,12 +119,12 @@ public partial class ExpressionParser
             self = msd;
             method = GMMethodInvoker;
         }
-        else if (callable is Script script)
+        else if (callable is Asset.Script script)
         {
             self = new Method(caller, script) { Name = script.Name };
             method = GMMethodInvoker;
         }
-        else if (callable is Script.Function function)
+        else if (callable is Asset.Script.Function function)
         {
             self = new Method(caller, function);
             method = GMMethodInvoker;
@@ -166,7 +167,7 @@ public partial class ExpressionParser
 
     // Ctors
     private static readonly ConstructorInfo GMValueConstructor = typeof(RValue).GetConstructor([typeof(object)]) ?? throw new Exception();
-    private static readonly ConstructorInfo GMMethodConstructor = typeof(Method).GetConstructor([typeof(object), typeof(Script)]) ?? throw new Exception();
+    private static readonly ConstructorInfo GMMethodConstructor = typeof(Method).GetConstructor([typeof(object), typeof(Asset.Script)]) ?? throw new Exception();
     private static readonly ConstructorInfo GMStructConstructor = typeof(ExpandoObject).GetConstructor(Type.EmptyTypes) ?? throw new Exception("");
 
     /// Accessors
@@ -258,9 +259,9 @@ public partial class ExpressionParser
     /// <param name="handle">The handle of the assets visiting</param>
     /// <returns>The script handle pointing at</returns>
     /// <exception cref="Exception">Script doesn't exists</exception>
-    public static Script ResolveScriptHandle(Handle<Script> handle)
+    public static Asset.Script ResolveScriptHandle(Handle<Asset.Script> handle)
     {
-        if (!GML.FunctionManager.TryFindAsset(handle, out var asset)) throw new Exception();
+        if (!GML.ScriptManager.TryFindAsset(handle, out var asset)) throw new Exception();
         return asset!;
     }
 
@@ -306,7 +307,7 @@ public partial class ExpressionParser
         {
             return Expression.Constant(new RValue() { Value = runtimeFunction });
         }
-        if (GML.FunctionManager.TryFindAssetHandle(name, out var handle) && GML.FunctionManager.TryFindAsset(handle, out var script))
+        if (GML.ScriptManager.TryFindAssetHandle(name, out Handle<Asset.Script> handle) && GML.ScriptManager.TryFindAsset(handle, out _))
         {
             return Expression.New
             (
@@ -373,7 +374,7 @@ public partial class ExpressionParser
 #region Compile Context
     private Stack<StatementLabelPair> StatementLabelStack; // Stores break - continue pairs for the statements can be controlled by these keywords, like do/for/while/switch statements
     private Stack<Dictionary<string, ParameterExpression>> BlockScopeStack;
-    private Stack<Dictionary<string, Expression<Script.Function>>> BlockFunctionBodyStack; // Stores the function definations and push them to the top of the block / script to implement the function raise
+    private Stack<Dictionary<string, Expression<Asset.Script.Function>>> BlockFunctionBodyStack; // Stores the function definations and push them to the top of the block / script to implement the function raise
     private Stack<Expression> SelfStack; // For condition like self keyword in function definations or with statements where the self context changes
     private Stack<LabelTarget> ReturnStack; // For condition like return keyword in function definations where the ret context changes
 
@@ -482,12 +483,12 @@ public partial class ExpressionParser
     {
         // Initialize token stack
         Init(code);
-
+        
         var headers = GetFunctionHeaders();
         foreach (var header in headers)
         {
-            var script = new Script(static (_, _) => {}, header);
-            GML.FunctionManager.Register(script);
+            var script = new Asset.Script(static (_, _) => {}, header);
+            GML.ScriptManager.Register(script);
         } 
     }
 
@@ -503,7 +504,7 @@ public partial class ExpressionParser
         // Catch function headers
         var headers = GetFunctionHeaders();
 
-        // Catch function definations
+        // Catch function definitions
         BlockFunctionBodyStack.Push([]);
         while (TokenStack.Peek().Type != TokenType.Eof)
         {
@@ -514,9 +515,9 @@ public partial class ExpressionParser
         // Register functions
         foreach (var header in headers)
         {
-            var script = new Script(lambdas[header].Compile(), header);
-            GML.FunctionManager.Override(script);
-        }                
+            var script = new Asset.Script(lambdas[header].Compile(), header);
+            GML.ScriptManager.Override(script);
+        }
     }
 }
 
@@ -532,6 +533,28 @@ public partial class ExpressionParser
         }
         token = null;
         return false;
+    }
+    
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="left"></param>
+    /// <param name="right"></param>
+    /// <returns></returns>
+    /// <exception cref="Exception"></exception>
+    private Expression PopNestedPair(TokenType left, TokenType right)
+    {
+        var counter = 1;
+        if (!TryPopToken(left, out var _)) throw new Exception();
+        while (counter > 0)
+        {
+            var token = TokenStack.Pop();
+            if (token.Type == left)
+                counter++;
+            else if (token.Type == right)
+                counter--;
+        }
+        return Expression.Empty();
     }
 
     private Expression PopExpression()
@@ -885,10 +908,17 @@ public partial class ExpressionParser
 
     private Expression[] PopArguments()
     {
+        if (IsFirstCompile)
+        {
+            PopNestedPair(TokenType.OpeningParenthesis, TokenType.ClosingParenthesis);
+            return [];
+        }
+        
         if (!TryPopToken(TokenType.OpeningParenthesis, out _))
         {
             throw new Exception("Expected closing parenthesis for callable invokement.");
         }
+
         List<Expression> arguments = [];
         var next = TokenStack.Peek();
         if (next.Type != TokenType.ClosingParenthesis && next.Type != TokenType.Eof)
@@ -939,14 +969,19 @@ public partial class ExpressionParser
         // Try pop arguments
         BlockScopeStack.Push([]); PopParameters(out _); BlockScopeStack.Pop();
         // Try pop base constructor
-        if (TryPopToken(TokenType.Colon, out _)) PopAccess(); TryPopToken(TokenType.Constructor, out _);
+        if (TryPopToken(TokenType.Colon, out _))
+        {
+            if (!TryPopToken(TokenType.Identifier, out _)) throw new Exception($"Expected identifier, got {name}.");
+            PopParameters(out _);
+        }
+        TryPopToken(TokenType.Constructor, out _);
         // Pop function body.
         PopBlock();
         if (name is not null) return new FunctionHeaderExpression(name);
         return null;
     }
 
-    private Expression<Script.Function> PopFunction(out string? name, Func<string?, ParameterExpression?> calleeParser)
+    private Expression<Asset.Script.Function> PopFunction(out string? name, Func<string?, Expression?> calleeParser)
     {
         TokenStack.Pop();
         // Try pop the name for the function.
@@ -973,15 +1008,29 @@ public partial class ExpressionParser
                 isCtor = true;
             }
 
-            // Check if the function is constructor.
+            // Check if the function is a constructor.
             if (TryPopToken(TokenType.Constructor, out _))
             {
                 isCtor = true;
-            } // The exception only occur if having base Ctors while doesn't have constructor keyword.
+            } // The exception will only be thrown when having base constructors without constructor keyword.
             else if (isCtor) throw new Exception("Expects Constructor keywords since base ctor is defined.");
 
             // Pop function body.
-            BlockScopeStack.Push(name is not null ? new() {{ name, calleeParser(name) ?? throw new Exception("") }} : []);
+            if (name is null)
+                BlockScopeStack.Push([]);
+            else
+            {
+                var callee = calleeParser(name);
+                if (callee is null) // cannot find callee
+                    throw new Exception(); 
+                if (callee is ParameterExpression calleeVariable) // callee is a local function
+                    BlockScopeStack.Push(new()
+                    {
+                        { name!, calleeVariable }
+                    });
+                else // if callee is a script function, it won't need to be put into local context
+                    BlockScopeStack.Push([]);
+            }
 
             body = PopBlock();
             BlockScopeStack.Pop();
@@ -1004,7 +1053,7 @@ public partial class ExpressionParser
             expressions
         );
 
-        return Expression.Lambda<Script.Function>(body, name, [caller, arguments]);
+        return Expression.Lambda<Asset.Script.Function>(body, name, [caller, arguments]);
     }
 #endregion
 
@@ -1013,21 +1062,21 @@ public partial class ExpressionParser
         Expression expression;
         switch (TokenStack.Peek().Type)
         {
-            /// Number
+            // Number
             case TokenType.Real:
             return Expression.Constant(new RValue() { Value = ((RealToken)TokenStack.Pop()).Value }, typeof(RValue));
-            /// String
+            // String
             case TokenType.StringLiteral:
             return Expression.Constant(new RValue() { Value = ((StringToken)TokenStack.Pop()).Value }, typeof(RValue));
-            /// Boolean
+            // Boolean
             case TokenType.Boolean:
             return Expression.Constant(new RValue() { Value = ((BooleanToken)TokenStack.Pop()).Value }, typeof(RValue));
-            /// Asset / Field / Variable
+            // Asset / Field / Variable
             case TokenType.Identifier:
-            // In expection, this case will only be called for the first identifier
+            // Expectedly, this case will only be called for the first identifier
             // I'm not sure if it will be called out of such condition
             return FindIdentifierExpression(TokenStack.Pop().Value!) ?? throw new Exception("Unclaimed variable");
-            /// Group
+            // Group
             case TokenType.OpeningParenthesis:
             {
                 TokenStack.Pop();
@@ -1036,7 +1085,7 @@ public partial class ExpressionParser
                     throw new Exception("Expected Closing Parenthesis.");
                 return expression;
             }
-            /// Struct
+            // Struct
             case TokenType.OpeningCurlyBrace:
             {
                 TokenStack.Pop();
@@ -1060,7 +1109,7 @@ public partial class ExpressionParser
                 SelfStack.Pop(); BlockScopeStack.Pop();
                 return Expression.Block([inst], initializer);
             }
-            /// Function
+            // Function
             case TokenType.Function:
             {  
                 var callee  = Expression.Parameter(typeof(RValue), "LAMBDA_CALLEE");
@@ -1081,14 +1130,7 @@ public partial class ExpressionParser
     {
         if (IsFirstCompile)
         {
-            var counter = 1;
-            if (!TryPopToken(TokenType.OpeningCurlyBrace, out Token? _)) throw new Exception();
-            while (counter > 0)
-            {
-                var token = TokenStack.Pop();
-                if (token.Type == TokenType.OpeningCurlyBrace) counter ++;
-                if (token.Type == TokenType.ClosingCurlyBrace) counter --;
-            }
+            PopNestedPair(TokenType.OpeningCurlyBrace, TokenType.ClosingCurlyBrace);
             return Expression.Empty();
         }
 
@@ -1285,25 +1327,29 @@ public partial class ExpressionParser
         }
         else if (TokenStack.Peek().Type == TokenType.For)
         {
-            TokenStack.Pop();
+            TokenStack.Pop(); // Pop "for"
             var loop = new StatementLabelPair();
-            // "For" is very weird in GM. Any legal statement including control flow and blocks can be used in for.
-            // example of legal "for" statements:
-            // for (i = 0 i<3; {case 3:exit};;;)func();
+            
             if (!TryPopToken(TokenType.OpeningParenthesis, out Token? _)) throw new Exception();
+            
             var initializer = GetStatementLine();
-            //match(Token.Semicolon); // Taken care of by stmt();
+            // The semicolon will be taken for the statement.
             var condition = Expression.NotEqual
             (
                 PopExpression(),
                 Expression.New(GMValueConstructor, Expression.Constant(0, typeof(object)))
             );
+            
             if (!TryPopToken(TokenType.Semicolon, out Token? _)) throw new Exception();
+            
             var iterator = GetStatementLine();
+            
             if (!TryPopToken(TokenType.ClosingParenthesis, out Token? _)) throw new Exception();
+            
             StatementLabelStack.Push(loop);
             var body = GetStatementLine();
             StatementLabelStack.Pop();
+            
             return Expression.Block(initializer, Expression.Loop(Expression.Block
             (
                 Expression.IfThen(Expression.Not(condition), Expression.Break(loop.End)),
@@ -1486,7 +1532,7 @@ public partial class ExpressionParser
                 return (Expression?)PopFunctionHeader() ?? Expression.Empty();
             }
             
-            var func = PopFunction(out var name, (id) => (ParameterExpression?)FindIdentifierExpression(id!));
+            var func = PopFunction(out var name, (id) => FindIdentifierExpression(id!));
             // Always be called, unless there's an isolate function expression that will never be called.
             if (name is not null) BlockFunctionBodyStack.Peek().Add(name, func);
             
