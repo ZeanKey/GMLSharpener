@@ -261,7 +261,7 @@ public partial class ExpressionParser
     /// <exception cref="Exception">Script doesn't exists</exception>
     public static Asset.Script ResolveScriptHandle(Handle<Asset.Script> handle)
     {
-        if (!GML.ScriptManager.TryFindAsset(handle, out var asset)) throw new Exception();
+        if (!GML.Script.TryFindAsset(handle, out var asset)) throw new Exception();
         return asset!;
     }
 
@@ -307,7 +307,7 @@ public partial class ExpressionParser
         {
             return Expression.Constant(new RValue() { Value = runtimeFunction });
         }
-        if (GML.ScriptManager.TryFindAssetHandle(name, out Handle<Asset.Script> handle) && GML.ScriptManager.TryFindAsset(handle, out _))
+        if (GML.Script.TryFindAssetHandle(name, out Handle<Asset.Script> handle) && GML.Script.TryFindAsset(handle, out _))
         {
             return Expression.New
             (
@@ -488,7 +488,7 @@ public partial class ExpressionParser
         foreach (var header in headers)
         {
             var script = new Asset.Script(static (_, _) => {}, header);
-            GML.ScriptManager.Register(script);
+            GML.Script.Register(script);
         } 
     }
 
@@ -516,7 +516,7 @@ public partial class ExpressionParser
         foreach (var header in headers)
         {
             var script = new Asset.Script(lambdas[header].Compile(), header);
-            GML.ScriptManager.Override(script);
+            GML.Script.Override(script);
         }
     }
 }
