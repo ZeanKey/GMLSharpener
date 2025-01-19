@@ -1,5 +1,3 @@
-using System.Text.RegularExpressions;
-
 namespace GMLSharpener;
 
 internal enum TokenType
@@ -79,8 +77,8 @@ internal enum TokenType
 
 internal class TokenRecord
 {
-    public TokenType Type; 
-    public string Value = "";
+    public readonly TokenType Type; 
+    public readonly string Value = "";
     
     public TokenRecord(TokenType type)
     {
@@ -100,7 +98,7 @@ internal class TokenRecord
 
 internal class Token
 {
-    public TokenType Type; 
+    public readonly TokenType Type; 
     public int Line; 
     public int Column; 
     public string Value = "";
@@ -127,7 +125,7 @@ internal class Token
 #region Value Tokens
 internal class RealToken : Token
 {
-    public new float Value;
+    public new readonly float Value;
     
     public RealToken(float val, int line, int col) : base(TokenType.Real, line, col)
     {
@@ -138,7 +136,7 @@ internal class RealToken : Token
 
 internal class StringToken : Token
 {
-    public new string Value;
+    public new readonly string Value;
     
     public StringToken(string val, int line, int col) : base(TokenType.StringLiteral, line, col)
     {
@@ -149,7 +147,7 @@ internal class StringToken : Token
 
 internal class BooleanToken : Token
 {
-    public new bool Value;
+    public new readonly bool Value;
     
     public BooleanToken(bool val, int line, int col) : base(TokenType.Boolean, line, col)
     {
@@ -167,44 +165,44 @@ internal partial class Lexer;
 internal partial class Lexer
 {
     private const int EOF = -1;
-    public static Dictionary<string, TokenRecord> Reserved;
-    public static Dictionary<string, TokenRecord> Tokens;
+    private static readonly Dictionary<string, TokenRecord> Reserved;
+    private static readonly Dictionary<string, TokenRecord> Tokens;
     
     private static class TokenTrie
     {
-        private static readonly List<Dictionary<int, int>> tree = [[]];
-        private static readonly List<bool> end = [false];
+        private static readonly List<Dictionary<int, int>> Tree = [[]];
+        private static readonly List<bool> End = [false];
 
         public static void Insert(string word)
         {
-            int p = 0;
-            char[] chars = word.ToCharArray();
-            for (int i = 0; i < chars.Length; i++) {
-                int c = chars[i];
-                if (!tree[p].TryGetValue(c, out _))
+            var p = 0;
+            var chars = word.ToCharArray();
+            foreach (int c in chars)
+            {
+                if (!Tree[p].TryGetValue(c, out _))
                 {
-                    tree[p][c] = tree.Count;
-                    tree.Add([]);
-                    end.Add(false);
+                    Tree[p][c] = Tree.Count;
+                    Tree.Add([]);
+                    End.Add(false);
                 }
-                p = tree[p][c];
+                p = Tree[p][c];
             }
-            end[p] = true;
+            End[p] = true;
         }
 
         public static bool TryMatch(Lexer lexer, out string? token)
         {
-            int p = 0;
-            int c = lexer.PeekChar;
-            string t = "";
-            while (tree[p].TryGetValue(c, out int ind))
+            var p = 0;
+            var c = lexer.PeekChar;
+            var t = "";
+            while (Tree[p].TryGetValue(c, out var ind))
             {
                 p = ind;
                 t += (char)lexer.ReadChar;
                 c = lexer.PeekChar;
             }
             token = t;
-            return end[p];
+            return End[p];
         }
     }
 
@@ -291,7 +289,8 @@ internal partial class Lexer
     private int Column  = 1;
 
     private readonly StringReader Reader;
-    private int PeekChar { get => Reader.Peek(); }
+    private int PeekChar => Reader.Peek();
+
     private int ReadChar
     {
         get
@@ -309,7 +308,7 @@ internal partial class Lexer
 
     public Lexer(string code)
     {
-        Reader = new(code);
+        Reader = new StringReader(code);
     }
 
     static Lexer () {
@@ -397,7 +396,7 @@ internal partial class Lexer
         if (PeekChar == '\"')
         {
             _ = ReadChar;
-            string literal = "";
+            var literal = "";
             while (PeekChar != EOF && PeekChar != '\"')
             {
                 literal += (char)ReadChar;
@@ -409,7 +408,7 @@ internal partial class Lexer
 
         if (PeekChar == '.' || char.IsNumber((char)PeekChar))
         {
-            string literal = "";
+            var literal = "";
             if (PeekChar == '.')
             {
                 _ = ReadChar;
@@ -429,7 +428,7 @@ internal partial class Lexer
         if (PeekChar == '$')
         {
             _ = ReadChar;
-            string literal = "0x";
+            var literal = "0x";
             while (PeekChar != EOF && char.IsAsciiHexDigit((char)PeekChar))
             {
                 literal += ReadChar;
@@ -471,7 +470,7 @@ internal partial class Lexer
         
         if (PeekChar == '_' || char.IsLetter((char)PeekChar))
         {
-            string literal = "";
+            var literal = "";
             while (PeekChar != EOF && (PeekChar == '_' || char.IsLetterOrDigit((char)PeekChar)))
             {
                 literal += (char)ReadChar;

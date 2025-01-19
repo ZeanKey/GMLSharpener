@@ -1,21 +1,17 @@
-using GMLib;
-using System.Linq.Expressions;
 using System.Reflection;
-using System.Diagnostics.CodeAnalysis;
-using System.Dynamic;
-using System.Collections;
+using GMLib;
 
-namespace GMLSharpener.GM;
+namespace GMLSharpener;
 
 /// <summary>
 /// GameMaker Value type, it stores a C# value having the similiar effect as <c>object</c>.
 /// </summary>
-public struct RValue
+public struct RValue : IEquatable<RValue>
 {
     /// <summary>
     /// 
     /// </summary>
-    public static readonly float MathEpsilon = 0.00001f;
+    public static float MathEpsilon { get; set; } = 0.00001f;
 
     /// <summary>
     /// The value inside the GameMaker Value.
@@ -80,17 +76,16 @@ public struct RValue
         Value = value;
     }
 
-    public static bool Equality(object? left, object? right)
+    private static bool Equality(object? left, object? right)
     {
-        if (left is not null && right is not null)
-        {
-            if (left is string strL && right is string strR)
-                return strL == strR;
-            if (Convert.ChangeType(left, typeof(float)) is float numL && Convert.ChangeType(right, typeof(float)) is float numR)
-                return Math.Abs(numL - numR) < MathEpsilon;
-            return false;
-        }
-        return left is null && right is null;
+        if (left is null || right is null) 
+            return left is null && right is null;
+        if (left is string strL && right is string strR)
+            return strL == strR;
+        if (Convert.ChangeType(left, typeof(float)) is float numL && 
+            Convert.ChangeType(right, typeof(float)) is float numR)
+            return Math.Abs(numL - numR) < MathEpsilon;
+        return false;
     }
     
 #region MemberAccessor
@@ -125,7 +120,7 @@ public struct RValue
                     return true;
                 }
             }
-            if (instance.Self is Dictionary<string, object?> self && self.TryGetValue(name, out var value))
+            if (instance.Self is { } self && self.TryGetValue(name, out var value))
             {
                 result = new(value);
                 return true;
@@ -157,7 +152,7 @@ public struct RValue
                     return true;
                 }
             }
-            if (instance.Self is Dictionary<string, object?> self)
+            if (instance.Self is { } self)
             {
                 self[name] = val.Value;
                 return true;
@@ -235,7 +230,7 @@ public struct RValue
 #endregion
 
 #region Operators
-    public override readonly bool Equals(object? obj)
+    public readonly override bool Equals(object? obj)
     {
         if (obj is null)
         {
@@ -322,15 +317,20 @@ public struct RValue
     }
 #endregion
 
-    public override readonly string ToString()
+    public readonly override string ToString()
     {
         // This prefix won't shown if you use show_debug_message to dump,
         // since that will capture the Value field only.
         return "GMValue: " + Value?.ToString() ?? "Null";
     }
 
-    public override readonly int GetHashCode()
+    public readonly override int GetHashCode()
     {
         return Value?.GetHashCode() ?? throw new Exception();
+    }
+
+    public bool Equals(RValue other)
+    {
+        return Equals(Value, other.Value);
     }
 }

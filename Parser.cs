@@ -5,86 +5,9 @@ using GMLib;
 
 using System.Linq.Expressions;
 using System.Reflection;
-using System.Diagnostics.CodeAnalysis;
 using System.Dynamic;
-using System.Collections;
-using System.Diagnostics;
-using GMLSharpener.GM;
 
 namespace GMLSharpener;
-
-/*
-/// <summary>
-/// Statement nodes.
-/// </summary>
-internal enum StatementKind
-{
-    AdditionAssignment,
-    AndAssignment,
-    Assignment,
-    Break,
-    Call,
-    CallStatement,
-    Case,
-    Continue,
-    Default,
-    DivideAssignment,
-    Do,
-    Exit,
-    For,
-    Globalvar,
-    If,
-    MultiplyAssignment,
-    OrAssignment,
-    Repeat,
-    Return,
-    Sequence,
-    SubtractionAssignment,
-    Switch,
-    Var,
-    While,
-    With,
-    XorAssignment,
-    Nop
-}
-
-/// <summary>
-/// Expression nodes.
-/// </summary>
-internal enum ExpressionKind
-{
-    None,
-    Access,
-    Addition,
-    BitwiseAnd,
-    BitwiseOr,
-    BitwiseXor,
-    Call,
-    Complement,
-    Constant,
-    Div,
-    Divide,
-    Equality,
-    GreaterThan,
-    GreaterThanOrEqual,
-    Grouping,
-    Id,
-    LessThan,
-    LessThanOrEqual,
-    LogicalAnd,
-    LogicalOr,
-    LogicalXor,
-    Minus,
-    Mod,
-    Multiply,
-    Not,
-    NotEqual,
-    Plus,
-    ShiftLeft,
-    ShiftRight,
-    Subtraction
-}
-*/
 
 /// <summary>
 /// Parse the GML code string into Linq Expression Tree.
@@ -101,6 +24,7 @@ public partial class ExpressionParser
     /// GameMaker Value I/O repacked. 
     /// This method is <b>not</b> supposed to be called by user, the only reason it's public is because otherwise it will be discarded by compiler.
     /// </summary>
+    /// <param name="caller"></param>
     /// <param name="callable">     The callable method which must be either C# MethodInfo or GameMaker Method/Script/Function</param>
     /// <param name="arguments">    The argument array of GameMaker boxed value</param>
     /// <returns>The return value of target method, null if no return value exists</returns>
@@ -109,39 +33,39 @@ public partial class ExpressionParser
     {
         MethodInfo method;
         object? self;
-        if (callable is MethodInfo methodInfo)
+        switch (callable)
         {
-            self = null;
-            method = methodInfo;
+            case MethodInfo methodInfo:
+                self = null;
+                method = methodInfo;
+                break;
+            case Method msd:
+                self = msd;
+                method = GMMethodInvoker;
+                break;
+            case Asset.Script script:
+                self = new Method(caller, script) { Name = script.Name };
+                method = GMMethodInvoker;
+                break;
+            case Asset.Script.Function function:
+                self = new Method(caller, function);
+                method = GMMethodInvoker;
+                break;
+            default:
+                throw new Exception("Trying to invoke a value isn't callable");
         }
-        else if (callable is Method msd)
-        {
-            self = msd;
-            method = GMMethodInvoker;
-        }
-        else if (callable is Asset.Script script)
-        {
-            self = new Method(caller, script) { Name = script.Name };
-            method = GMMethodInvoker;
-        }
-        else if (callable is Asset.Script.Function function)
-        {
-            self = new Method(caller, function);
-            method = GMMethodInvoker;
-        }
-        else throw new Exception("Trying to invoke a value isn't callable");
         // Unbox value from the GMValue type
         // If params attribute is being assigned, pack the remains into Array<T>
         // The type identifying depends on DLR
         List<object?> args = [];
         var argInfos = method.GetParameters();
-        for (int i = 0; i < arguments.Length; i++)
+        for (var i = 0; i < arguments.Length; i++)
         {
             if (argInfos[i].IsDefined(typeof(ParamArrayAttribute), false))
             {
                 var paramType = argInfos[i].ParameterType.GetElementType() ?? throw new Exception("Using params keyword with type not collection.");
                 var paramArgs = Array.CreateInstance(paramType, arguments.Length - i);
-                for (int j = i; j < arguments.Length; j ++)
+                for (var j = i; j < arguments.Length; j ++)
                 {
                     dynamic? arg = arguments[j].Value;
                     paramArgs.SetValue(arg, j - i);
@@ -152,11 +76,9 @@ public partial class ExpressionParser
             var rvalue = arguments[i];
             args.Add(Convert.ChangeType(rvalue.Value, argInfos[i].GetType()));
         }
-        if (args.Count == 0)
-        {
-            return new RValue(method.Invoke(self, [null]));
-        }
-        else return new RValue(method.Invoke(self, [.. args]));
+        return args.Count == 0 ? 
+            new RValue(method.Invoke(self, [null])) : 
+            new RValue(method.Invoke(self, [.. args]));
     }
 
 #region Expression Tree Reflections
@@ -165,7 +87,7 @@ public partial class ExpressionParser
     private static readonly MethodInfo GMMethodInvoker = typeof(Method).GetMethod("Invoke") ?? throw new Exception("Method Invoker doesn't exists");
     private static readonly MethodInfo GMScriptGetter = typeof(ExpressionParser).GetMethod("ResolveScriptHandle") ?? throw new Exception("Script Getter doesn't exists");
 
-    // Ctors
+    // Constructors
     private static readonly ConstructorInfo GMValueConstructor = typeof(RValue).GetConstructor([typeof(object)]) ?? throw new Exception();
     private static readonly ConstructorInfo GMMethodConstructor = typeof(Method).GetConstructor([typeof(object), typeof(Asset.Script)]) ?? throw new Exception();
     private static readonly ConstructorInfo GMStructConstructor = typeof(ExpandoObject).GetConstructor(Type.EmptyTypes) ?? throw new Exception("");
@@ -180,19 +102,17 @@ public partial class ExpressionParser
     /// Combine the GameMaker Value params, C# object?[]? params, and default value assignments into function parameter initializer.
     /// </summary>
     /// <param name="parameters">GameMaker Value type parameters' parameter expressions</param>
-    /// <param name="arguments">C# parameters's parameter expression as object?[]?</param>
+    /// <param name="arguments">C# parameters' parameter expression as object?[]?</param>
     /// <param name="initializer">Default value assignment</param>
     /// <returns>Expression to put in function body</returns>
     private static Expression GMArgumentInitializer(ParameterExpression[] parameters, ParameterExpression arguments, Expression initializer)
     {
         var exprs = new List<Expression> { initializer };
-        for (int i = 0; i < parameters.Length; i++)
-        {
-            exprs.Add(Expression.Assign
-            (
-                parameters[i], Expression.New(GMValueConstructor, Expression.ArrayAccess(arguments, Expression.Constant(i)))
-            ));
-        }
+        exprs.AddRange(
+            parameters.Select((t, i) => 
+                Expression.Assign(t, 
+                    Expression.New(GMValueConstructor, 
+                        Expression.ArrayAccess(arguments, Expression.Constant(i))))));
         return Expression.Block(exprs.ToArray());
     }
 
@@ -200,6 +120,7 @@ public partial class ExpressionParser
     /// Create a expression will invoke the method in C# params with GameMaker Value params in run.
     /// This method collaborates with <b>InvokeWithGMValue</b>.
     /// </summary>
+    /// <param name="caller"></param>
     /// <param name="method">The callable method expression which must be either C# MethodInfo or GameMaker Method</param>
     /// <param name="arguments">The argument array of GameMaker boxed value</param>
     /// <returns>Expression calling C# method with GameMaker Values</returns>
@@ -271,50 +192,41 @@ public partial class ExpressionParser
     /// <param name="name"></param>
     /// <returns></returns>
     /// <exception cref="Exception"></exception>
-    private Expression? FindIdentifierExpression(string name)
+    private Expression FindIdentifierExpression(string name)
     {
-        if (name == "self")
+        // Object keywords
+        switch (name)
         {
-            return Expression.New(GMValueConstructor, SelfStack.Peek());
+            case "self":
+                return Expression.New(GMValueConstructor, SelfStack.Peek());
+            case "other":
+                throw new NotImplementedException();
+                // TODO
+                // return Expression.New(GMValueConstructor, OtherStack.Peek());
+            case "noone":
+            case "all":
+            case "global":
+                throw new Exception();
         }
-        if (name == "other")
-        {
-            throw new NotImplementedException();
-            // TODO
-            // return Expression.New(GMValueConstructor, OtherStack.Peek());
-        }
-        if (name == "noone")
-        {
-            throw new Exception();
-        }
-        if (name == "all")
-        {
-            throw new Exception();
-        }
-        if (name == "global")
-        {
-            
-        }
-
+        
+        // temporary variables
         foreach (var context in BlockScopeStack)
-        {
-            if (context.TryGetValue(name, out ParameterExpression? val))
-            {
+            if (context.TryGetValue(name, out var val))
                 return val;
-            }
-        }
-        if (typeof(GML).GetMethod(name) is MethodInfo runtimeFunction)
-        {
+        
+        // Runtime functions
+        if (typeof(GML).GetMethod(name) is { } runtimeFunction)
             return Expression.Constant(new RValue() { Value = runtimeFunction });
-        }
+        
+        // Script assets
         if (GML.Script.TryFindAssetHandle(name, out Handle<Asset.Script> handle) && GML.Script.TryFindAsset(handle, out _))
-        {
             return Expression.New
             (
                 GMValueConstructor,
                 Expression.Call(null, GMScriptGetter, Expression.Constant(handle))
             );
-        }
+        
+        // local variables
         return GMMember(Expression.New(GMValueConstructor, SelfStack.Peek()), Expression.Constant(name));
     }
 }
@@ -356,17 +268,13 @@ public partial class ExpressionParser
     /// This expression won't exist in exported expression tree,
     /// mainly designed as the ret for first compiling, detecting the function statements' header.
     /// </summary>
-    internal class FunctionHeaderExpression : Expression
+    internal class FunctionHeaderExpression(string name) : Expression
     {
-        public string Name;
-        public FunctionHeaderExpression(string name)
-        {
-            Name = name;
-        }
+        public readonly string Name = name;
     }
 #endregion
 
-    // The global object binded to the parser
+    // The global object bind to the parser
     private readonly IDictionary<string, object?> Global;
     // Stores tokens for script compiling
     private Stack<Token> TokenStack;
@@ -374,9 +282,9 @@ public partial class ExpressionParser
 #region Compile Context
     private Stack<StatementLabelPair> StatementLabelStack; // Stores break - continue pairs for the statements can be controlled by these keywords, like do/for/while/switch statements
     private Stack<Dictionary<string, ParameterExpression>> BlockScopeStack;
-    private Stack<Dictionary<string, Expression<Asset.Script.Function>>> BlockFunctionBodyStack; // Stores the function definations and push them to the top of the block / script to implement the function raise
-    private Stack<Expression> SelfStack; // For condition like self keyword in function definations or with statements where the self context changes
-    private Stack<LabelTarget> ReturnStack; // For condition like return keyword in function definations where the ret context changes
+    private Stack<Dictionary<string, Expression<Asset.Script.Function>>> BlockFunctionBodyStack; // Stores the function definitions and push them to the top of the block / script to implement the function raise
+    private Stack<Expression> SelfStack; // For condition like self keyword in function definitions or with statements where the self context changes
+    private Stack<LabelTarget> ReturnStack; // For condition like return keyword in function definitions where the ret context changes
 
     private Dictionary<string, ParameterExpression> GlobalScope; // Stores global variables declaration for script compiling
     private bool IsFirstCompile; // Statement controlling the compile function on pre-compile statements and declarations.
@@ -409,7 +317,7 @@ public partial class ExpressionParser
             if (token is not null) TokenStack.Push(token);
         }
         while (token is null || token.Type != TokenType.Eof);
-        TokenStack = new(TokenStack);
+        TokenStack = new Stack<Token>(TokenStack);
     }
 
     /// <summary>
@@ -842,7 +750,7 @@ public partial class ExpressionParser
                 {
                     throw new Exception($"Expected Member name, got {member?.Type}.");
                 }
-                val = GMMember(val, Expression.Constant(member!.Value!));
+                val = GMMember(val, Expression.Constant(member!.Value));
                 break;
                 
                 case TokenType.OpeningSquareBracket:
@@ -891,7 +799,7 @@ public partial class ExpressionParser
         while (TokenStack.Peek().Type == TokenType.Identifier)
         {
             var token = TokenStack.Pop();
-            var name = token.Value ?? "";
+            var name = token.Value;
             var variable = Expression.Variable(typeof(RValue), name);
             BlockScopeStack.Peek().Add(name, variable);
             if (TokenStack.Peek().Type == TokenType.Assignment)
@@ -1023,11 +931,13 @@ public partial class ExpressionParser
                 var callee = calleeParser(name);
                 if (callee is null) // cannot find callee
                     throw new Exception(); 
+                
                 if (callee is ParameterExpression calleeVariable) // callee is a local function
-                    BlockScopeStack.Push(new()
+                    BlockScopeStack.Push(new Dictionary<string, ParameterExpression>
                     {
-                        { name!, calleeVariable }
+                        { name, calleeVariable }
                     });
+                
                 else // if callee is a script function, it won't need to be put into local context
                     BlockScopeStack.Push([]);
             }
@@ -1035,7 +945,7 @@ public partial class ExpressionParser
             body = PopBlock();
             BlockScopeStack.Pop();
 
-            if (isCtor && baseCtor is not null) body = Expression.Block([baseCtor!, body]); // Include base ctor if it has.
+            if (isCtor && baseCtor is not null) body = Expression.Block([baseCtor, body]); // Include base ctor if it has.
         }
         BlockScopeStack.Pop(); SelfStack.Pop(); ReturnStack.Pop();
         
@@ -1075,7 +985,7 @@ public partial class ExpressionParser
             case TokenType.Identifier:
             // Expectedly, this case will only be called for the first identifier
             // I'm not sure if it will be called out of such condition
-            return FindIdentifierExpression(TokenStack.Pop().Value!) ?? throw new Exception("Unclaimed variable");
+            return FindIdentifierExpression(TokenStack.Pop().Value) ?? throw new Exception("Unclaimed variable");
             // Group
             case TokenType.OpeningParenthesis:
             {
@@ -1236,7 +1146,7 @@ public partial class ExpressionParser
             var stmt = GetStatementLine();
             if (stmt is FunctionHeaderExpression headerExpression)
             {
-                headers.Add(headerExpression.Name!);
+                headers.Add(headerExpression.Name);
             }
         }
         if (!isRoot && !TryPopToken(TokenType.ClosingCurlyBrace, out Token? _)) throw new Exception();
@@ -1410,7 +1320,7 @@ public partial class ExpressionParser
                     TokenStack.Push(token);
                     break;
                 }
-                var name = token.Value ?? "";
+                var name = token.Value;
                 var variable = Expression.Variable(typeof(RValue));
                 BlockScopeStack.Peek().Add(name, variable);
                 if (TokenStack.Peek().Type == TokenType.Assignment)
@@ -1437,7 +1347,7 @@ public partial class ExpressionParser
                     break;
                 }
                 //if (Context.IsBuiltIn(next.lexeme)) error(Error.BuiltinVariable);
-                strs.Add(token.Value ?? "");
+                strs.Add(token.Value);
                 if (TokenStack.Peek().Type == TokenType.Comma) TokenStack.Pop();
             }
             foreach (var str in strs)
@@ -1449,9 +1359,9 @@ public partial class ExpressionParser
         else if (TokenStack.Peek().Type == TokenType.With)
         {
             TokenStack.Pop();
-            var expression = PopExpression();
+            _ = PopExpression();
             if (TokenStack.Peek().Type == TokenType.Do) TokenStack.Pop();
-            var body = GetStatementLine();
+            _ = GetStatementLine();
             /*
             return new With(e, GetStatementLine(), l, c);
             */
