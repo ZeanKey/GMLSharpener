@@ -183,7 +183,7 @@ public partial class ExpressionParser
     public static Asset.Script ResolveScriptHandle(Handle<Asset.Script> handle)
     {
         if (!GML.Script.TryFindAsset(handle, out var asset)) throw new Exception();
-        return asset!;
+        return asset!.Target as Asset.Script ?? throw new Exception();
     }
 
     /// <summary>
@@ -396,7 +396,7 @@ public partial class ExpressionParser
         foreach (var header in headers)
         {
             var script = new Asset.Script(static (_, _) => {}, header);
-            GML.Script.Register(script);
+            GML.Script.Register(header, script);
         } 
     }
 
@@ -424,7 +424,8 @@ public partial class ExpressionParser
         foreach (var header in headers)
         {
             var script = new Asset.Script(lambdas[header].Compile(), header);
-            GML.Script.Override(script);
+            GML.Script.TryFindAssetHandle(header, out Handle<Asset.Script> handle);
+            GML.Script.SetTarget(handle, script);
         }
     }
 }
