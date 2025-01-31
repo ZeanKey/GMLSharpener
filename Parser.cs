@@ -9,6 +9,11 @@ using System.Dynamic;
 
 namespace GMLSharpener;
 
+public class ExpressionParserExceptions
+{
+    public static readonly string CannotFindScriptAssetOnInjection = "Cannot find script asset on injection";
+}
+
 /// <summary>
 /// Parse the GML code string into Linq Expression Tree.
 /// </summary>
@@ -17,7 +22,7 @@ public partial class ExpressionParser;
 // Tools & Reflections
 public partial class ExpressionParser
 {
-    internal static readonly MethodInfo Print = typeof(GML).GetMethod("show_debug_message") ?? throw new Exception("Debugger doesn't exists"); // Debugger, can be inserted into the Expression to print certain value.
+    internal static readonly MethodInfo Print = typeof(GMLNative).GetMethod("show_debug_message") ?? throw new Exception("Debugger doesn't exists"); // Debugger, can be inserted into the Expression to print certain value.
 
     /// <summary>
     /// Invoke C# Method of GameMaker Callable with value boxed in GameMaker Value struct.
@@ -183,7 +188,7 @@ public partial class ExpressionParser
     public static Asset.Script ResolveScriptHandle(Handle<Asset.Script> handle)
     {
         if (!GML.Script.TryFindAsset(handle, out var asset)) throw new Exception();
-        return asset!;
+        return (Asset.Script)(asset!.Target)!;
     }
 
     /// <summary>
@@ -396,7 +401,7 @@ public partial class ExpressionParser
         foreach (var header in headers)
         {
             var script = new Asset.Script(static (_, _) => {}, header);
-            GML.Script.Register(script);
+            GML.Script.Register(header, script);
         } 
     }
 
@@ -424,7 +429,11 @@ public partial class ExpressionParser
         foreach (var header in headers)
         {
             var script = new Asset.Script(lambdas[header].Compile(), header);
-            GML.Script.Override(script);
+            if (GML.Script.TryFindAssetHandle(header, out Handle<Asset.Script> handle))
+            {
+                GML.Script.SetTarget(handle, script);
+            }
+            else throw new Exception(ExpressionParserExceptions.CannotFindScriptAssetOnInjection);
         }
     }
 }
