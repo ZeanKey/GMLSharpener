@@ -22,7 +22,7 @@ public partial class ExpressionParser;
 // Tools & Reflections
 public partial class ExpressionParser
 {
-    internal static readonly MethodInfo Print = typeof(GMLNative).GetMethod("show_debug_message") ?? throw new Exception("Debugger doesn't exists"); // Debugger, can be inserted into the Expression to print certain value.
+    internal static readonly MethodInfo Print = typeof(GMLib.NativeInterop.GML).GetMethod("show_debug_message") ?? throw new Exception("Debugger doesn't exists"); // Debugger, can be inserted into the Expression to print certain value.
 
     /// <summary>
     /// Invoke C# Method of GameMaker Callable with value boxed in GameMaker Value struct.
@@ -49,7 +49,7 @@ public partial class ExpressionParser
                 method = GMMethodInvoker;
                 break;
             case Asset.Script script:
-                self = new Method(caller, script) { Name = script.Name };
+                self = new Method(caller, script);
                 method = GMMethodInvoker;
                 break;
             case Asset.Script.Function function:
